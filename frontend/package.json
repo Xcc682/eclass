@@ -1,0 +1,32 @@
+{
+  "name": "sixiang-qingjing-gongfang",
+  "version": "1.0.0",
+  "description": "思政情景工坊——沉浸式思政实践智能体",
+  "scripts": {
+    "dev:h5": "uni",
+    "build:h5": "uni build",
+    "dev:mp-weixin": "uni -p mp-weixin",
+    "build:mp-weixin": "uni build -p mp-weixin",
+    "type-check": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@vue/compiler-sfc": "^3.4.21",
+    "@vue/runtime-core": "^3.4.21",
+    "@vue/runtime-dom": "^3.4.21",
+    "@vue/shared": "^3.5.38",
+    "echarts": "^5.5.0",
+    "pinia": "^2.1.0",
+    "vue": "^3.5.38",
+    "vue-router": "^4.6.4"
+  },
+  "devDependencies": {
+    "@dcloudio/types": "^3.4.0",
+    "@dcloudio/uni-app": "3.0.0-alpha-5010320260611001",
+    "@dcloudio/uni-mp-weixin": "3.0.0-alpha-5010320260611001",
+    "@dcloudio/vite-plugin-uni": "3.0.0-alpha-5010320260611001",
+    "@types/node": "^20.0.0",
+    "sass": "^1.101.0",
+    "typescript": "^5.3.0",
+    "vue-tsc": "^2.0.0"
+  }
+}

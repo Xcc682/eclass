@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>思政情景工坊</title>
+  <link rel="icon" href="/src/static/images/icons/training-active.png" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html {
+      /* 100rpx = 1rem, root = min(100vw, 480px) / 7.5
+         375px screen → 50px | 480px → 64px | capped at 480px */
+      font-size: calc(min(100vw, 480px) / 7.5);
+    }
+    body {
+      width: 100%; height: 100%; overflow-x: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', 'Helvetica Neue', sans-serif;
+      -webkit-font-smoothing: antialiased;
+      background: #F0F0F0;
+    }
+    #app { width: 100%; min-height: 100vh; }
+  </style>
+</head>
+<body>
+  <div id="app"></div>
+  <script type="module" src="/src/main-h5.ts"></script>
+</body>
+</html>

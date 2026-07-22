@@ -1,0 +1,17 @@
+{
+  "name": "sixiang-qingjing-gongfang",
+  "appid": "__UNI__XXXXXXX",
+  "versionName": "1.0.0",
+  "versionCode": "100",
+  "transformPx": false,
+  "networkTimeout": {
+    "request": 60000,
+    "uploadFile": 120000,
+    "downloadFile": 120000
+  },
+  "usingComponents": true,
+  "uniStatistics": {
+    "enable": false
+  },
+  "vueVersion": "3"
+}

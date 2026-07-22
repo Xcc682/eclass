@@ -1,0 +1,141 @@
+// ===== 思政情景工坊 - 全局主题变量 =====
+// 主色调：革命红 #C41E1A
+// 辅助色：暗红 #8B0000
+// 强调色：金色 #FFD700
+
+// ----- 颜色系统 -----
+$app-primary: #C41E1A;
+$app-primary-light: #E84C4C;
+$app-primary-dark: #8B0000;
+$app-accent: #FFD700;
+$app-accent-light: #FFE44D;
+
+// 背景色
+$app-bg-primary: #FFF8F0;
+$app-bg-card: #FFFFFF;
+$app-bg-surface: #FFF1F0;
+
+// 文字色
+$app-text-primary: #1A1A1A;
+$app-text-secondary: #666666;
+$app-text-tertiary: #999999;
+$app-text-white: #FFFFFF;
+$app-text-link: #C41E1A;
+
+// 功能色
+$app-success: #2E7D32;
+$app-warning: #F57C00;
+$app-error: #D32F2F;
+$app-info: #1976D2;
+
+// 边框分割
+$app-border: #E8E8E8;
+$app-divider: #F0F0F0;
+
+// ----- 圆角 -----
+$radius-sm: 8rpx;
+$radius-md: 16rpx;
+$radius-lg: 24rpx;
+$radius-xl: 32rpx;
+
+// ----- 阴影 -----
+$shadow-sm: 0 2rpx 8rpx rgba(0, 0, 0, 0.06);
+$shadow-md: 0 4rpx 16rpx rgba(0, 0, 0, 0.08);
+$shadow-lg: 0 8rpx 32rpx rgba(0, 0, 0, 0.12);
+
+// ----- 间距 -----
+$spacing-xs: 8rpx;
+$spacing-sm: 16rpx;
+$spacing-md: 24rpx;
+$spacing-lg: 32rpx;
+$spacing-xl: 48rpx;
+$spacing-2xl: 64rpx;
+$spacing-3xl: 80rpx;
+
+// ----- 字体大小 -----
+$font-h1: 48rpx;
+$font-h2: 36rpx;
+$font-h3: 32rpx;
+$font-body: 28rpx;
+$font-body-sm: 24rpx;
+$font-caption: 22rpx;
+$font-badge: 20rpx;
+$font-tab: 20rpx;
+
+// ----- 字体粗细 -----
+$weight-bold: 700;
+$weight-semi-bold: 600;
+$weight-medium: 500;
+$weight-regular: 400;
+
+// ===== 全局样式混入 =====
+
+// 卡片样式
+@mixin card-style {
+  background: $app-bg-card;
+  border-radius: $radius-lg;
+  box-shadow: $shadow-sm;
+  padding: $spacing-lg;
+}
+
+// 页面容器
+@mixin page-container {
+  min-height: 100vh;
+  background: $app-bg-primary;
+  padding: $spacing-md $spacing-lg;
+}
+
+// 主按钮
+@mixin primary-button {
+  background: linear-gradient(135deg, $app-primary, $app-primary-dark);
+  color: $app-text-white;
+  border-radius: $radius-xl;
+  font-size: $font-body;
+  font-weight: $weight-medium;
+  height: 88rpx;
+  line-height: 88rpx;
+  text-align: center;
+  box-shadow: 0 4rpx 16rpx rgba(196, 30, 26, 0.3);
+  transition: all 0.2s;
+  &:active {
+    transform: scale(0.97);
+    opacity: 0.9;
+  }
+}
+
+// 渐变背景
+@mixin gradient-red {
+  background: linear-gradient(135deg, #C41E1A, #8B0000);
+}
+
+// 暖色渐变背景
+@mixin gradient-warm {
+  background: linear-gradient(135deg, #FFF5F0, #FFF8F0);
+}
+
+// 文字渐隐
+@mixin text-ellipsis($lines: 2) {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: $lines;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+// 毛玻璃背景
+@mixin glass-effect {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20rpx);
+  -webkit-backdrop-filter: blur(20rpx);
+}
+
+// 红色徽章
+@mixin red-badge {
+  display: inline-block;
+  background: $app-primary;
+  color: $app-text-white;
+  font-size: $font-caption;
+  padding: 4rpx 16rpx;
+  border-radius: 20rpx;
+  font-weight: $weight-medium;
+}
