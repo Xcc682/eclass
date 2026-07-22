@@ -19,12 +19,20 @@
       <div class="cover-copy__rule"></div>
       <h1 class="cover-copy__title">{{ spread.scene.title }}</h1>
       <p>{{ spread.scene.caption }}</p>
+      <div v-if="spread.scene.timeline?.length" class="cover-timeline">
+        <article v-for="(event, index) in spread.scene.timeline" :key="`${event.date}-${index}`">
+          <i>{{ String(index + 1).padStart(2, '0') }}</i><span>{{ event.date }}</span><b>{{ event.title }}</b>
+        </article>
+      </div>
       <button @click="$emit('next')"><b>第 {{ volumeLabel }} 卷</b><em>{{ spread.scene.cta || '翻开书卷' }} →</em></button>
     </section>
 
     <section v-else-if="spread.type === 'exploration'" class="exploration-copy">
       <header class="scene-heading">
-        <span>{{ spread.scene.eyebrow }}</span><h2>{{ spread.scene.title }}</h2><p>{{ spread.scene.caption }}</p>
+        <div v-if="spread.scene.event" class="event-meta"><b>{{ spread.scene.event.date }}</b><i></i><span>{{ spread.scene.event.place }}</span></div>
+        <span>{{ spread.scene.eyebrow }}</span><h2>{{ spread.scene.event?.title || spread.scene.title }}</h2>
+        <p>{{ spread.scene.event?.summary || spread.scene.caption }}</p>
+        <small v-if="spread.scene.event">为什么重要 · {{ spread.scene.event.meaning }}</small>
       </header>
       <button
         v-for="(hotspot, index) in spread.scene.hotspots || []"
@@ -52,8 +60,10 @@
     </section>
 
     <section v-else-if="spread.type === 'decision'" class="decision-copy">
+      <div v-if="spread.scene.event" class="event-meta"><b>{{ spread.scene.event.date }}</b><i></i><span>{{ spread.scene.event.place }}</span></div>
       <span>{{ spread.scene.eyebrow }}</span>
-      <h2>{{ spread.scene.title }}</h2>
+      <h2>{{ spread.scene.event?.title || spread.scene.title }}</h2>
+      <div v-if="spread.scene.event" class="event-brief"><p>{{ spread.scene.event.summary }}</p><small>为什么重要 · {{ spread.scene.event.meaning }}</small></div>
       <p>{{ spread.narration }}</p>
       <div class="decision-list">
         <button
@@ -74,6 +84,7 @@
       <span>{{ spread.scene.eyebrow }}</span>
       <h2>{{ spread.scene.title }}</h2>
       <blockquote>{{ spread.scene.archive_excerpt || spread.narration }}</blockquote>
+      <p v-if="spread.scene.event" class="archive-conclusion"><b>{{ spread.scene.event.title }}</b> · {{ spread.scene.event.meaning }}</p>
       <footer>
         <b>{{ spread.scene.caption }}</b>
         <a v-if="spread.sources?.[0]?.url" :href="spread.sources[0].url" target="_blank" rel="noreferrer">查看权威来源 ↗</a>
@@ -132,9 +143,11 @@
     </section>
 
     <section v-else class="cinematic-copy" :class="{ 'cinematic-copy--dialogue': spread.type === 'dialogue' }">
+      <div v-if="spread.scene.event" class="event-meta"><b>{{ spread.scene.event.date }}</b><i></i><span>{{ spread.scene.event.place }}</span></div>
       <span>{{ spread.scene.eyebrow }}</span>
-      <h2>{{ spread.scene.title }}</h2>
-      <p v-if="captionsEnabled">{{ spread.narration }}</p>
+      <h2>{{ spread.scene.event?.title || spread.scene.title }}</h2>
+      <p v-if="captionsEnabled">{{ spread.scene.event?.summary || spread.narration }}</p>
+      <small v-if="captionsEnabled && spread.scene.event" class="event-meaning">为什么重要 · {{ spread.scene.event.meaning }}</small>
       <blockquote v-if="spread.scene.dialogue">{{ spread.scene.dialogue }}</blockquote>
       <small>{{ spread.scene.caption }}</small>
     </section>

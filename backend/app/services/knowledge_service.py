@@ -6,7 +6,7 @@ import hashlib
 import logging
 import re
 from pathlib import Path
-from threading import Lock, Thread
+from threading import Lock
 from typing import Any
 
 from sqlalchemy import create_engine, delete, or_, select, text
@@ -159,17 +159,8 @@ def _log_retrieval_stage(stage: str, **extra: Any) -> None:
     logger.info("[knowledge] %s %s", stage, details)
 
 
-def _warm_embedding_worker() -> None:
-    try:
-        _log_retrieval_stage("embedding_warmup_start", model=settings.EMBEDDING_MODEL)
-        _embedding_model()
-        _log_retrieval_stage("embedding_warmup_done", model=settings.EMBEDDING_MODEL)
-    except Exception as exc:
-        logger.warning("[knowledge] embedding_warmup_failed error=%s: %s", exc.__class__.__name__, exc)
-
-
 def start_embedding_warmup() -> bool:
-    """Start a non-blocking embedding model warmup after app startup."""
+    """Block the startup event until the embedding model is fully loaded."""
     global _warmup_started
     if not settings.VECTOR_DATABASE_URL or _model is not None:
         return False
@@ -177,8 +168,14 @@ def start_embedding_warmup() -> bool:
         if _warmup_started:
             return False
         _warmup_started = True
-    Thread(target=_warm_embedding_worker, name="knowledge-embedding-warmup", daemon=True).start()
-    return True
+    _log_retrieval_stage("embedding_warmup_start", model=settings.EMBEDDING_MODEL)
+    try:
+        _embedding_model()
+        _log_retrieval_stage("embedding_warmup_done", model=settings.EMBEDDING_MODEL)
+        return True
+    except Exception as exc:
+        logger.warning("[knowledge] embedding_warmup_failed error=%s: %s", exc.__class__.__name__, exc)
+        return False
 
 
 def _ensure_vector_schema(vector_engine) -> None:
@@ -371,7 +368,15 @@ def _keyword_hits(db: Session, query: str, category: str | None, limit: int = 20
                      JOIN knowledge_chunks c ON c.id = knowledge_chunks_fts.chunk_id
                      JOIN knowledge_documents d ON d.id = c.document_id
                      WHERE knowledge_chunks_fts MATCH :query AND d.status = 'published'"""
-            fts_terms = [term for term in terms if len(term) >= 3]
+            fts_terms = [term for term in terms if len(term) >= 2]
+            _cjk_short = [t for t in fts_terms if len(t) == 2]
+            fts_terms = [t for t in fts_terms if len(t) >= 3]
+            for term in _cjk_short:
+                idx = query.find(term)
+                if idx >= 0:
+                    context = query[max(0, idx - 1):min(len(query), idx + len(term) + 1)]
+                    if len(context) >= 3:
+                        fts_terms.append(context)
             fts_query = " OR ".join(f'"{term}"' for term in fts_terms) or query
             params: dict[str, Any] = {
                 "query": fts_query,

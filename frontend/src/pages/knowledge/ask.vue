@@ -61,9 +61,8 @@
           <div class="bubble">{{ message.content }}</div>
           <div v-if="message.citations?.length" class="citations">
             <article v-for="citation in message.citations" :key="citation.chunk_id" @click="openCitation(citation)">
-              <b>[{{ citation.index }}] {{ citation.document_title }}<span v-if="citation.relevance_score" class="rel-badge">{{ citation.relevance_score >= 8 ? '高度相关' : citation.relevance_score >= 5 ? '相关' : '低相关' }}</span></b>
+              <b>[{{ citation.index }}] {{ citation.document_title }}</b>
               <p>{{ citation.excerpt }}</p>
-              <small v-if="citation.relevance_reason">{{ citation.relevance_reason }}</small>
               <small>{{ citation.source }} · 第 {{ citation.chunk_index + 1 }} 段</small>
             </article>
           </div>

@@ -107,7 +107,7 @@ class ApiAcceptanceTests(unittest.TestCase):
         session_id = debate.json()["data"]["id"]
         with patch("app.routers.debates.ai_service.debate_argue", new=AsyncMock(return_value="这是反方回应")), \
              patch("app.routers.debates.ai_service.debate_feedback", new=AsyncMock(return_value=feedback)):
-            for argument in ("我的核心观点", "针对对方论据的质询", "回应质询并补充论据"):
+            for argument in ("我的核心观点", "针对对方论据的质询", "回应质询并补充论据", "总结我方立场并回应辩题"):
                 self.assertEqual(self.client.post(f"/api/v1/debates/practice/{session_id}/argue", headers=headers, json={"argument": argument}).status_code, 200)
             self.assertEqual(self.client.post(f"/api/v1/debates/practice/{session_id}/end", headers=headers).json()["data"]["overall_score"], 82)
         with patch("app.routers.tours.ai_service.tour_report", new=AsyncMock(return_value="研学心得正文")):

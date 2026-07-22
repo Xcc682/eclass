@@ -9,17 +9,42 @@ export interface DebateTopic {
 export interface DebateFeedback {
   overall_score: number
   dimension_scores: Record<string, number>
+  dimension_analysis?: Array<{
+    name: string
+    score: number
+    suggestion: string
+  }>
   strengths: string[]; weaknesses: string[]
   suggestion: string
+}
+
+export interface DebateStartResponse {
+  id: string
+  first_argument: string
+  stage: string
+  stage_label: string
+  stance: string
+  stance_label: string
+  topic: DebateTopic
+}
+
+export interface DebateArgumentResponse {
+  argument: string
+  round: number
+  stage: string
+  next_stage: string
+  stage_complete: boolean
+  phase_transition: string
+  is_finished: boolean
 }
 
 export const debateApi = {
   getTopics: () => api.get<DebateTopic[]>('/debates/topics'),
   generateTopics: () => api.post<DebateTopic[]>('/debates/topics/generate'),
   startDebate: (topic_id: string, stance: string) =>
-    api.post<{ id: string; first_argument: string }>('/debates/practice/start', { topic_id, stance }),
+    api.post<DebateStartResponse>('/debates/practice/start', { topic_id, stance }),
   submitArgument: (sessionId: string, argument: string) =>
-    api.post<{ argument: string; round: number; stage: string; next_stage: string }>(`/debates/practice/${sessionId}/argue`, { argument }),
+    api.post<DebateArgumentResponse>(`/debates/practice/${sessionId}/argue`, { argument }),
   endDebate: (sessionId: string) =>
     api.post<DebateFeedback>(`/debates/practice/${sessionId}/end`),
   getFeedback: (sessionId: string) =>

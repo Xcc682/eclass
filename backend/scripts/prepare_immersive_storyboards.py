@@ -89,15 +89,24 @@ def _fallback_panels(image: Image.Image, book_id: str) -> list[Image.Image]:
 
 
 def prepare(book_id: str) -> tuple[str, str]:
+    scene_dir = SOURCE_DIR / book_id
     sheet_path = SOURCE_DIR / f"{book_id}-sheet.png"
     fallback_path = BACKEND_OUTPUT / f"{book_id}.png"
-    source_path = sheet_path if sheet_path.exists() else fallback_path
-    if not source_path.exists():
-        raise FileNotFoundError(f"No generated source artwork for {book_id}")
-
-    with Image.open(source_path) as source:
-        source = source.convert("RGB")
-        panels = _storyboard_panels(source) if sheet_path.exists() else _fallback_panels(source, book_id)
+    scene_paths = [scene_dir / f"{index:02d}.png" for index in range(1, 7)]
+    if all(path.exists() for path in scene_paths):
+        panels = []
+        for path in scene_paths:
+            with Image.open(path) as source:
+                panels.append(_fit_16_by_10(source.convert("RGB")))
+        source = "independent scenes"
+    else:
+        source_path = sheet_path if sheet_path.exists() else fallback_path
+        if not source_path.exists():
+            raise FileNotFoundError(f"No generated source artwork for {book_id}")
+        with Image.open(source_path) as opened:
+            opened = opened.convert("RGB")
+            panels = _storyboard_panels(opened) if sheet_path.exists() else _fallback_panels(opened, book_id)
+        source = "storyboard" if sheet_path.exists() else "generated fallback"
 
     BACKEND_OUTPUT.mkdir(parents=True, exist_ok=True)
     FRONTEND_OUTPUT.mkdir(parents=True, exist_ok=True)
@@ -105,7 +114,7 @@ def prepare(book_id: str) -> tuple[str, str]:
         filename = f"{book_id}-{index:02d}.webp"
         for directory in (BACKEND_OUTPUT, FRONTEND_OUTPUT):
             panel.save(directory / filename, "WEBP", quality=84, method=6)
-    return book_id, "storyboard" if sheet_path.exists() else "generated fallback"
+    return book_id, source
 
 
 def main() -> None:

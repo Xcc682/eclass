@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.models.domain import TourRecord, TourSite
 from app.models.history import HistoryLearningRecord, HistoryScenario
 from app.models.immersive import ImmersiveBook, ImmersiveProgress, ImmersiveSpread
+from app.immersive_event_content import EVENT_TIMELINES
 
 
 HISTORY_BOOKS = [
@@ -77,7 +78,7 @@ TOUR_BOOKS = [
         "explore": "沿山路、旧居与地形寻找线索，思考根据地建设为何必须回应当地实际。",
         "person": "故事以早期根据地军民群体为线索，不指定虚构人物为真实历史人物。",
         "reflection": "自然地形、群众基础和组织建设之间，形成了怎样的联系？",
-        "source": {"title": "井冈山革命根据地相关史实", "organization": "中国政府网体系公开资料", "url": "https://www.gov.cn/", "excerpt": "1927年秋，起义部队向井冈山进军，开始创建农村革命根据地。"},
+        "source": {"title": "井冈山：燃起中国革命启明灯", "organization": "国家林业和草原局", "url": "https://www.forestry.gov.cn/c/www/ghlc/145656.jhtml", "excerpt": "1927年10月，秋收起义部队到达井冈山地区，开始创建农村革命根据地；1928年井冈山会师后，根据地建设进入新阶段。"},
     },
     {
         "id": "tour-2", "source_id": "2", "title": "延安", "subtitle": "窑洞灯火与思想的力量",
@@ -128,21 +129,30 @@ def _spread(book: dict, index: int, spread_type: str, narration: str, scene: dic
     # establishing shot; archive/ending share the quiet closing shot.
     scene_number = (1, 1, 2, 3, 4, 5, 6, 6)[index]
     image_url = f"/static/images/immersive/{book['id']}-{scene_number:02d}.webp"
+    timeline = EVENT_TIMELINES[book["id"]]
+    event_indexes = (0, 0, 1, 2, 3, 4, 4, 4) if book["id"].startswith("history-") else (0, 0, 1, 2, 3, 3, 4, 4)
+    event_index = event_indexes[index]
+    event = timeline[event_index]
     return {
         "id": f"{book['id']}-{index + 1:02d}", "order_index": index, "spread_type": spread_type,
         "layout": "archive" if spread_type == "archive" else "cinematic",
         "image_url": image_url, "thumbnail_url": image_url, "audio_url": "", "narration": narration,
-        "scene": {"position": positions[index], "scale": 1 + (index % 3) * 0.04, "reconstruction": True, **scene},
+        "scene": {
+            "position": positions[index], "scale": 1 + (index % 3) * 0.04,
+            "reconstruction": True, "event": event, "timeline": timeline,
+            "timeline_index": event_index, **scene,
+        },
         "sources": source_refs or [],
     }
 
 
 def _history_spreads(book: dict, scenario: HistoryScenario) -> list[dict]:
-    points = json.loads(scenario.knowledge_points_json or "[]")
     decision = json.loads(scenario.decision_points_json or "{}")
+    timeline = EVENT_TIMELINES[book["id"]]
     hotspots = [
-        {"id": f"clue-{i + 1}", "x": [27, 64, 77][i % 3], "y": [56, 36, 68][i % 3], "title": item.get("title", f"线索{i + 1}"), "content": item.get("content", "")}
-        for i, item in enumerate(points[:3])
+        {"id": f"clue-{i + 1}", "x": [27, 64, 77][i], "y": [56, 36, 68][i],
+         "title": item["title"], "content": f"{item['date']}，{item['place']}。{item['summary']} {item['meaning']}"}
+        for i, item in enumerate(timeline[1:4])
     ]
     options = [{"id": f"choice-{i}", "label": row.get("label", "观察这一方向"), "feedback": row.get("feedback", "选择只改变观察顺序，不改变历史结果。")}
                for i, row in enumerate(decision.get("options", [])[:3])]
@@ -160,9 +170,12 @@ def _history_spreads(book: dict, scenario: HistoryScenario) -> list[dict]:
 
 
 def _tour_spreads(book: dict, site: TourSite) -> list[dict]:
-    facts = json.loads(site.facts_json or "[]")
-    hotspots = [{"id": f"clue-{i + 1}", "x": [24, 58, 78][i % 3], "y": [62, 34, 56][i % 3], "title": f"现场线索 {i + 1}", "content": fact}
-                for i, fact in enumerate(facts[:3])]
+    timeline = EVENT_TIMELINES[book["id"]]
+    hotspots = [
+        {"id": f"clue-{i + 1}", "x": [24, 58, 78][i], "y": [62, 34, 56][i],
+         "title": item["title"], "content": f"{item['date']}，{item['place']}。{item['summary']} {item['meaning']}"}
+        for i, item in enumerate(timeline[1:4])
+    ]
     source = book["source"]
     return [
         _spread(book, 0, "cover", "", {"eyebrow": f"红色山河研学图志 · 第{book['source_id']}站", "title": book["title"], "caption": book["subtitle"], "cta": "展开行装"}),
@@ -188,9 +201,9 @@ def _upsert_book(db: Session, config: dict, module: str, spreads: list[dict]) ->
     book.era = config["era"]
     book.location = config["location"]
     book.cover_url = config["image"]
-    book.version = 2
+    book.version = 3
     book.status = "published"
-    book.duration_estimate = 12 if module == "history" else 15
+    book.duration_estimate = 16 if module == "history" else 18
     book.order_index = int(config["source_id"]) - 1
     book.updated_at = datetime.utcnow()
     db.flush()

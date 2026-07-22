@@ -71,8 +71,8 @@ onLoad(async (query: any) => {
     suggestion.value = fb.suggestion
   } catch(e) { console.error(e) }
 })
-function retrySameTopic() { uni.redirectTo({ url: `/pages/debate/arena?topicId=${topicId}&stance=${stance}&title=${encodeURIComponent(topicTitle)}` }) }
-function switchStance() { const s = stance === "pro" ? "con" : "pro"; uni.redirectTo({ url: `/pages/debate/arena?topicId=${topicId}&stance=${s}&title=${encodeURIComponent(topicTitle)}` }) }
+function retrySameTopic() { uni.redirectTo({ url: `/pages/debate/arena?topicId=${topicId.value}&stance=${stance.value}&title=${encodeURIComponent(topicTitle.value)}` }) }
+function switchStance() { const s = stance.value === "pro" ? "con" : "pro"; uni.redirectTo({ url: `/pages/debate/arena?topicId=${topicId.value}&stance=${s}&title=${encodeURIComponent(topicTitle.value)}` }) }
 function backToList() { uni.redirectTo({ url: "/pages/debate/debate" }) }
 </script>
 

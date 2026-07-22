@@ -25,6 +25,14 @@ export interface SceneOption {
   feedback: string
 }
 
+export interface ImmersiveEventAnchor {
+  date: string
+  place: string
+  title: string
+  summary: string
+  meaning: string
+}
+
 export interface ImmersiveScene {
   eyebrow?: string
   title?: string
@@ -41,6 +49,9 @@ export interface ImmersiveScene {
   contemporary?: boolean
   hotspots?: SceneHotspot[]
   options?: SceneOption[]
+  event?: ImmersiveEventAnchor
+  timeline?: ImmersiveEventAnchor[]
+  timeline_index?: number
 }
 
 export interface ImmersiveSpread {

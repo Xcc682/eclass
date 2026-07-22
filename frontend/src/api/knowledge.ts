@@ -22,7 +22,18 @@ export interface KnowledgeDocument {
 }
 
 export interface KnowledgeTemplate { id: string; name: string; desc: string; prompt?: string }
-export interface Citation { index: number; document_id: string; document_title: string; source: string; source_url: string; chunk_id: string; chunk_index: number; excerpt: string }
+export interface Citation {
+  index: number
+  document_id: string
+  document_title: string
+  source: string
+  source_url: string
+  chunk_id: string
+  chunk_index: number
+  excerpt: string
+  relevance_score?: number
+  relevance_reason?: string
+}
 export interface KnowledgeMessage { id: string; role: 'user' | 'assistant'; content: string; citations: Citation[]; created_at: string }
 export interface KnowledgeSession { id: string; title: string; created_at: string; updated_at: string; messages?: KnowledgeMessage[] }
 export interface KnowledgeIngestionJob {

@@ -13,7 +13,7 @@ from app.models.domain import GeneratedReport
 from app.models.interview import InterviewMessage, InterviewPracticeRecord, InterviewScenario
 from app.models.user import User
 from app.security import get_current_user, get_optional_user
-from app.services.ai_service import ai_service, validate_interview_report, validate_interview_turn
+from app.services.ai_service import ai_service, validate_interview_report, validate_interview_turn, DIMENSIONS
 
 router = APIRouter(prefix="/api/v1/interviews", tags=["入党谈话"])
 
@@ -154,21 +154,16 @@ async def end_practice(practice_id: str, user: User = Depends(get_current_user),
 
     delta = {}
     if previous and previous.report_json:
-        try:
-            prev_report = json.loads(previous.report_json)
-            prev_scores = prev_report.get("dimension_scores", {})
-            curr_scores = report.get("dimension_scores", {})
-            prev_overall = prev_report.get("overall_score", 0)
-            for dim in DIMENSIONS:
-                curr = curr_scores.get(dim, 0)
-                prev = prev_scores.get(dim, 0) if isinstance(prev_scores, dict) else 0
-                if isinstance(prev, (int, float)):
-                    delta[dim] = curr - int(prev)
-            delta["overall_score"] = record.overall_score - prev_overall
-        except Exception:
-            pass
+        prev_report = json.loads(previous.report_json)
+        prev_scores = prev_report.get("dimension_scores", {})
+        curr_scores = report.get("dimension_scores", {})
+        prev_overall = int(prev_report.get("overall_score", 0))
+        for dim in DIMENSIONS:
+            if dim in curr_scores and dim in prev_scores:
+                delta[dim] = int(curr_scores[dim]) - int(prev_scores[dim])
+        delta["overall_score"] = record.overall_score - prev_overall
     report["delta"] = delta
-    report["has_previous"] = previous is not None
+    report["has_previous"] = previous is not None and bool(delta)
 
     scenario = db.get(InterviewScenario, record.scenario_id)
     db.add(GeneratedReport(user_id=user.id, report_type="interview", title=scenario.title if scenario else "入党谈话", score=record.overall_score, content_json=record.report_json))
