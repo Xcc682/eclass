@@ -20,3 +20,5 @@ backend/dev.db
 _backup/
 .playwright-cli/
 .claude/
+需求文档_temp.txt
+test_hist.txt
