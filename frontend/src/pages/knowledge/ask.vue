@@ -61,8 +61,9 @@
           <div class="bubble">{{ message.content }}</div>
           <div v-if="message.citations?.length" class="citations">
             <article v-for="citation in message.citations" :key="citation.chunk_id" @click="openCitation(citation)">
-              <b>[{{ citation.index }}] {{ citation.document_title }}</b>
+              <b>[{{ citation.index }}] {{ citation.document_title }}<span v-if="citation.relevance_score" class="rel-badge">{{ citation.relevance_score >= 8 ? '高度相关' : citation.relevance_score >= 5 ? '相关' : '低相关' }}</span></b>
               <p>{{ citation.excerpt }}</p>
+              <small v-if="citation.relevance_reason">{{ citation.relevance_reason }}</small>
               <small>{{ citation.source }} · 第 {{ citation.chunk_index + 1 }} 段</small>
             </article>
           </div>
@@ -275,4 +276,5 @@ onUnmounted(() => { alive = false; cancelPendingRequest() })
 .ask-page main>footer button:disabled{opacity:.4}
 .mobile-history{display:none}
 @media(max-width:600px){.ask-page{grid-template-columns:1fr;height:calc(100vh - 88rpx)}.history-panel{display:none}.mobile-history{display:flex;gap:10rpx;padding:12rpx 16rpx;background:#332f2b}.mobile-history__new{flex:none;margin:0;padding:10rpx 14rpx;border:1px solid rgba(241,207,130,.45);border-radius:2rpx;background:transparent;color:#f1cf82;font-size:16rpx;line-height:1.2}.mobile-history__sessions{display:flex;gap:8rpx;overflow-x:auto}.mobile-history__sessions>div{display:flex;align-items:center;flex:none;max-width:210rpx;padding:7rpx 8rpx 7rpx 12rpx;border:1px solid rgba(255,255,255,.1);color:#d9cdbd;font-size:16rpx}.mobile-history__sessions>div.active{border-color:#f1cf82;color:#fff}.mobile-history__sessions span{max-width:150rpx;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.mobile-history__sessions button{margin:0 0 0 6rpx;padding:0 4rpx;background:transparent;color:#c9a99d;font-size:20rpx;line-height:1}.citations{grid-template-columns:1fr}.ask-page main>header{padding:15rpx 20rpx}.messages{padding:20rpx 17rpx}.ask-page main>footer{padding:15rpx 17rpx}.bubble{font-size:22rpx;border-radius:3rpx}.welcome span{border-radius:3rpx}.ask-page textarea,.ask-page main>footer button{border-radius:2rpx}}
+.rel-badge{display:inline-block;margin-left:8rpx;padding:2rpx 8rpx;border-radius:2rpx;font-size:15rpx;font-weight:400;vertical-align:middle;background:rgba(46,125,50,.12);color:#2e7d32}
 </style>

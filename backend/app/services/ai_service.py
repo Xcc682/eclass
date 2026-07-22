@@ -359,16 +359,53 @@ class AIService:
         ]
         return await self._call_api(msgs, temperature=0.7, max_tokens=2000)
 
+    async def relevance_filter(self, question: str, contexts: List[Dict]) -> List[Dict]:
+        """Batch judge relevance of each retrieved chunk via LLM. Returns chunks sorted by relevance DESC, score >= 5 only. Min 1 result."""
+        if len(contexts) <= 3:
+            return sorted(contexts, key=lambda c: c.get('score', 0), reverse=True)
+
+        # Prepare candidates for batch scoring
+        candidates = "\n---\n".join(
+            f"[CANDIDATE {i}]\n标题: {c['title']}\n内容: {c['content'][:200]}"
+            for i, c in enumerate(contexts)
+        )
+        msgs = [
+            {"role": "system", "content": '你是一位信息检索质量审查员。对每个候选片段判断是否与问题相关。相关问题是指：该片段可以帮助回答问题、提供背景知识、或包含问题中的核心概念。评分标准：10=直接回答, 7=高度相关, 5=部分相关, 3=弱相关, 0=完全无关。回复JSON数组（不要输出其他内容）：[{"index": 0, "score": 8, "reason": "直接解释了核心概念"}]'},
+            {"role": "user", "content": f"问题: {question}\n\n候选片段:\n{candidates}\n\n请评分每个候选片段，直接回复JSON数组。"}
+        ]
+        resp = await self._call_api(msgs, temperature=0.1, max_tokens=800)
+        try:
+            scores = self._parse_json(resp)
+            if not isinstance(scores, list):
+                raise ValueError("not a list")
+        except Exception:
+            # Fallback: keep all, sort by retrieval score
+            return sorted(contexts, key=lambda c: c.get('score', 0), reverse=True)[:6]
+
+        # Merge scores back into contexts
+        score_map = {s.get('index', -1): s.get('score', 5) for s in scores if isinstance(s, dict)}
+        for i, c in enumerate(contexts):
+            c['relevance_score'] = score_map.get(i, 5)
+            c['relevance_reason'] = next((s.get('reason', '') for s in scores if isinstance(s, dict) and s.get('index') == i), '')
+
+        # Filter and sort
+        filtered = [c for c in contexts if c.get('relevance_score', 5) >= 5]
+        if not filtered:
+            # Keep at least the highest-scoring one
+            filtered = [sorted(contexts, key=lambda c: c.get('relevance_score', 0), reverse=True)[0]]
+
+        return sorted(filtered, key=lambda c: c.get('relevance_score', 0), reverse=True)
+
     async def knowledge_answer(self, question: str, contexts: List[Dict]) -> str:
         evidence = "\n\n".join(
             f"[{index}] 《{item['title']}》\n{item['content']}"
             for index, item in enumerate(contexts, start=1)
         )
         messages = [
-            {"role": "system", "content": "你是思政知识库助手。只能根据提供的资料作答，不得补充资料之外的事实。每个关键结论后用[1]、[2]标注依据。资料不足时必须明确回答：当前知识库没有足够依据。回答应准确、简洁、使用中文。"},
+            {"role": "system", "content": '你是思政知识库助手。根据提供的资料回答问题，每个关键结论后用[1]、[2]标注。用资料中能找到的所有相关内容来回答，不要轻易说数据不足——资料即使不直接匹配主题，也可能包含相关信息。只有在所有资料都完全不相关时才能说未找到。回答应准确、简洁、使用中文。'},
             {"role": "user", "content": f"资料：\n{evidence}\n\n问题：{question}"},
         ]
-        return await self._call_api(messages, temperature=0.2, max_tokens=1200)
+        return await self._call_api(messages, temperature=0.5, max_tokens=1200)
 
 
 # Global singleton

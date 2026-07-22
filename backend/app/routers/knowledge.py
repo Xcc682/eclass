@@ -493,6 +493,18 @@ async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user)
         except Exception as fallback_exc:
             logger.exception("[knowledge] keyword_fallback_failed error=%s", fallback_exc.__class__.__name__)
             raise HTTPException(status_code=503, detail="知识库检索暂不可用，请稍后重试") from fallback_exc
+    # Relevance filter: LLM judges each chunk, keeps only score >= 5, sorts by relevance
+    if contexts:
+        try:
+            logger.info("[knowledge] relevance_filter_start candidates=%s", len(contexts))
+            contexts = await asyncio.wait_for(
+                ai_service.relevance_filter(data.question, contexts),
+                timeout=settings.KNOWLEDGE_LLM_TIMEOUT_SECONDS,
+            )
+            logger.info("[knowledge] relevance_filter_done kept=%s", len(contexts))
+        except Exception as exc:
+            logger.warning("[knowledge] relevance_filter_failed fallback=all error=%s: %s", exc.__class__.__name__, exc)
+
     citations = [{
         "index": index,
         "document_id": item["document_id"],
@@ -502,6 +514,8 @@ async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user)
         "chunk_id": item["chunk_id"],
         "chunk_index": item["chunk_index"],
         "excerpt": item["content"][:300],
+        "relevance_score": item.get("relevance_score"),
+        "relevance_reason": item.get("relevance_reason", ""),
     } for index, item in enumerate(contexts, start=1)]
     if contexts:
         try:
