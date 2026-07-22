@@ -43,13 +43,25 @@ def _score(value, label: str) -> int:
 
 def validate_interview_turn(value: object) -> dict:
     data = _mapping(value, "谈话内容")
-    return {
+    res = {
         "question": _text(data.get("question"), "谈话问题"),
         "comment": _text(data.get("comment", data.get("点评", "")), "谈话点评", allow_empty=True),
         "finished": bool(data.get("finished", data.get("结束", False))),
         "phase": _text(data.get("phase", ""), "谈话阶段", allow_empty=True),
         "follow_up_type": _text(data.get("follow_up_type", ""), "追问类型", allow_empty=True),
+        "scenario": _text(data.get("scenario", ""), "情景描述", allow_empty=True),
+        "snapshot_scores": {},
     }
+    # Optional per-turn scores
+    raw_scores = data.get("snapshot_scores", {})
+    if isinstance(raw_scores, dict):
+        for dim in DIMENSIONS:
+            if dim in raw_scores:
+                try:
+                    res["snapshot_scores"][dim] = _score(raw_scores[dim], dim)
+                except AIResponseValidationError:
+                    pass
+    return res
 
 
 def _text_list(value: object, label: str) -> list[str]:
@@ -119,31 +131,34 @@ def validate_topics(value: object) -> list[dict]:
 def validate_generated_text(value: object, label: str) -> str:
     return _text(value, label)
 
-# ===== Phase-aware difficulty prompts =====
+# ===== Phase-aware difficulty prompts with live scoring & scenario branching =====
 INTERVIEW_PROMPTS = {
-    "beginner": """你是一位大学党委组织委员，正在对一名首次参加谈话的入党积极分子进行谈话。难度：初级。
-你的风格：温暖亲切，像学长学姐聊天。多用鼓励性语言，问题偏重个人基本情况、成长经历和入党动机。
-不要追问深奥理论，以引导学生敞开心扉为主。
-考察阶段依次为：开场寒暄 → 自我认知 → 入党动机 → 理论考察（浅） → 情景假设（浅）。
-当你认为学生已充分表达（通常是5-6轮后），将 finished 设为 true。
-每轮回复JSON格式（不要输出其他内容）：
-{"question": "你的下一个问题", "comment": "一句话点评刚才的回答", "finished": false, "phase": "当前阶段名", "follow_up_type": "probe|challenge|encourage"}""",
+    "beginner": """你是大学党委组织委员，正在对入党积极分子谈话。难度：初级。
+风格：温暖亲切，像学长学姐聊天。问题偏重个人情况、成长经历和入党动机。
+阶段：开场寒暄→自我认知→入党动机→理论考察(浅)→情景假设(浅)。
+在理论考察阶段（第3-4轮），提出一个情景：假设你是班干部，有同学对党课有抵触情绪，你会怎么处理？
+每轮根据学生回答，在5个维度上给出当前预估分（0-100，基于已回答的全部内容）：思想认识、表达逻辑、入党动机、理论掌握、应变能力。分数应如实反映质量——答得好给高分，敷衍给低分。
+当你认为已充分考察（5-6轮），将 finished 设为 true。
+回复JSON（不要输出其他内容）：
+{"question":"下一问题","comment":"点评","finished":false,"phase":"当前阶段","follow_up_type":"probe|challenge|encourage","scenario":"情景描述(仅在理论考察阶段提供)","snapshot_scores":{"思想认识":60,"表达逻辑":65,"入党动机":70,"理论掌握":50,"应变能力":55}}""",
 
-    "intermediate": """你是一位大学党委副书记，正在对一名发展对象进行预备党员接收前的谈话。难度：中级。
-你的风格：严肃但不失亲切。问题要有一定深度，追问入党动机的具体内涵、对党的基本理论的理解。
-当学生回答停留在表面时，用 follow_up_type=probe 追问更深层思考。
-考察阶段依次为：开场寒暄 → 自我认知 → 入党动机 → 理论考察 → 情景假设。
-当你认为已充分考察（通常是5-6轮后），将 finished 设为 true。
-每轮回复JSON格式（不要输出其他内容）：
-{"question": "你的下一个问题", "comment": "一句话点评刚才的回答", "finished": false, "phase": "当前阶段名", "follow_up_type": "probe|challenge|encourage"}""",
+    "intermediate": """你是大学党委副书记，正在对发展对象进行预备党员接收前谈话。难度：中级。
+风格：严肃但不失亲切。追问入党动机内涵、党的基本理论和时政理解。
+阶段：开场寒暄→自我认知→入党动机→理论考察→情景假设。
+在理论考察阶段（第3-4轮），提出一个情景：你在网上看到有同学转发了境外对中国的不实报道，你会怎么处理？
+每轮根据学生回答，在5个维度上给当前预估分：思想认识、表达逻辑、入党动机、理论掌握、应变能力。分数如实反映质量。
+当你认为已充分考察（5-6轮），将 finished 设为 true。
+回复JSON（不要输出其他内容）：
+{"question":"下一问题","comment":"点评","finished":false,"phase":"当前阶段","follow_up_type":"probe|challenge|encourage","scenario":"情景描述(仅在理论考察阶段提供)","snapshot_scores":{"思想认识":65,"表达逻辑":70,"入党动机":75,"理论掌握":55,"应变能力":60}}""",
 
-    "advanced": """你是一位大学党委书记，正在对预备期满的预备党员进行转正谈话。难度：高级。
-你的风格：严肃深入，有压力感。考察重点放在理论深度、时政理解、复杂情景假设和自我剖析。
-如果学生回答空泛或理论不足，用 challenge 指出并追问；如果答得好，用 encourage 提出更高要求。
-考察阶段依次为：开场寒暄 → 自我认知 → 入党动机 → 理论考察（深） → 情景假设（难）。
-当你认为已充分考察（通常是5-6轮后），将 finished 设为 true。
-每轮回复JSON格式（不要输出其他内容）：
-{"question": "你的下一个问题", "comment": "一句话点评刚才的回答", "finished": false, "phase": "当前阶段名", "follow_up_type": "probe|challenge|encourage"}""",
+    "advanced": """你是大学党委书记，正在对预备党员进行转正谈话。难度：高级。
+风格：严肃深入，有压力感。重点考察理论深度、时政理解、复杂情景应对和自我剖析。
+阶段：开场寒暄→自我认知→入党动机→理论考察(深)→情景假设(难)。
+在理论考察阶段（第3-4轮），提出一个情景：如果党组织要求你参加一个与你专业考试时间冲突的重要活动，你会如何权衡？
+每轮根据学生回答，在5个维度上给当前预估分：思想认识、表达逻辑、入党动机、理论掌握、应变能力。分数如实反映质量。
+当你认为已充分考察（5-6轮），将 finished 设为 true。
+回复JSON（不要输出其他内容）：
+{"question":"下一问题","comment":"点评","finished":false,"phase":"当前阶段","follow_up_type":"probe|challenge|encourage","scenario":"情景描述(仅在理论考察阶段提供)","snapshot_scores":{"思想认识":70,"表达逻辑":75,"入党动机":80,"理论掌握":65,"应变能力":68}}""",
 }
 
 INTERVIEW_REPORT_PROMPT = """你是入党谈话评估专家。根据以下谈话记录，生成评估报告。
@@ -360,41 +375,8 @@ class AIService:
         return await self._call_api(msgs, temperature=0.7, max_tokens=2000)
 
     async def relevance_filter(self, question: str, contexts: List[Dict]) -> List[Dict]:
-        """Batch judge relevance of each retrieved chunk via LLM. Returns chunks sorted by relevance DESC, score >= 5 only. Min 1 result."""
-        if len(contexts) <= 3:
-            return sorted(contexts, key=lambda c: c.get('score', 0), reverse=True)
-
-        # Prepare candidates for batch scoring
-        candidates = "\n---\n".join(
-            f"[CANDIDATE {i}]\n标题: {c['title']}\n内容: {c['content'][:200]}"
-            for i, c in enumerate(contexts)
-        )
-        msgs = [
-            {"role": "system", "content": '你是一位信息检索质量审查员。对每个候选片段判断是否与问题相关。相关问题是指：该片段可以帮助回答问题、提供背景知识、或包含问题中的核心概念。评分标准：10=直接回答, 7=高度相关, 5=部分相关, 3=弱相关, 0=完全无关。回复JSON数组（不要输出其他内容）：[{"index": 0, "score": 8, "reason": "直接解释了核心概念"}]'},
-            {"role": "user", "content": f"问题: {question}\n\n候选片段:\n{candidates}\n\n请评分每个候选片段，直接回复JSON数组。"}
-        ]
-        resp = await self._call_api(msgs, temperature=0.1, max_tokens=800)
-        try:
-            scores = self._parse_json(resp)
-            if not isinstance(scores, list):
-                raise ValueError("not a list")
-        except Exception:
-            # Fallback: keep all, sort by retrieval score
-            return sorted(contexts, key=lambda c: c.get('score', 0), reverse=True)[:6]
-
-        # Merge scores back into contexts
-        score_map = {s.get('index', -1): s.get('score', 5) for s in scores if isinstance(s, dict)}
-        for i, c in enumerate(contexts):
-            c['relevance_score'] = score_map.get(i, 5)
-            c['relevance_reason'] = next((s.get('reason', '') for s in scores if isinstance(s, dict) and s.get('index') == i), '')
-
-        # Filter and sort
-        filtered = [c for c in contexts if c.get('relevance_score', 5) >= 5]
-        if not filtered:
-            # Keep at least the highest-scoring one
-            filtered = [sorted(contexts, key=lambda c: c.get('relevance_score', 0), reverse=True)[0]]
-
-        return sorted(filtered, key=lambda c: c.get('relevance_score', 0), reverse=True)
+        """Sort contexts by existing retrieval score (RRF fusion), keep top 6. No LLM call."""
+        return sorted(contexts, key=lambda c: c.get('score', 0), reverse=True)[:6]
 
     async def knowledge_answer(self, question: str, contexts: List[Dict]) -> str:
         evidence = "\n\n".join(

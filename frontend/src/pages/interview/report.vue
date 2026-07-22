@@ -38,9 +38,26 @@
         </div>
       </div>
 
+      <!-- 历史对比 -->
+      <div class="report__card" v-if="hasPrevious">
+        <span class="report__card-title"><small>PROGRESS / 03</small>历史对比</span>
+        <div class="report__dimensions">
+          <div class="report__dim-item" v-for="dim in dimensionAnalysis" :key="'delta-'+dim.name">
+            <div class="report__dim-header">
+              <span class="report__dim-name">{{ dim.name }}</span>
+              <span class="report__dim-score" :style="{ color: delta[dim.name] > 0 ? '#2E7D32' : delta[dim.name] < 0 ? '#D32F2F' : '#999' }">{{ dim.score }}分 <small v-if="delta[dim.name]">{{ delta[dim.name] > 0 ? '↑' : '↓' }}{{ Math.abs(delta[dim.name]) }}</small></span>
+            </div>
+          </div>
+        </div>
+        <div class="report__delta-summary" v-if="delta.overall_score">
+          综合得分较上次{{ delta.overall_score > 0 ? '提升' : delta.overall_score < 0 ? '下降' : '持平' }}
+          <strong :style="{color: delta.overall_score > 0 ? '#2E7D32' : '#D32F2F'}">{{ delta.overall_score > 0 ? '+' : '' }}{{ delta.overall_score }}分</strong>
+        </div>
+      </div>
+
       <!-- 总结建议 -->
       <div class="report__card">
-        <span class="report__card-title"><small>ACTION / 03</small>改进建议</span>
+        <span class="report__card-title"><small>ACTION / {{ hasPrevious ? '04' : '03' }}</small>改进建议</span>
         <div class="report__strengths">
           <span class="report__subtitle">✅ 优势</span>
           <div class="report__tag-list">
@@ -86,6 +103,8 @@ const dimensionAnalysis = ref<Array<{name:string;score:number;suggestion:string}
 const strengths = ref<string[]>([])
 const weaknesses = ref<string[]>([])
 const suggestion = ref('')
+const delta = ref<Record<string,number>>({})
+const hasPrevious = ref(false)
 
 onLoad(async (query: any) => {
   const pid = query.practiceId || ''
@@ -105,6 +124,8 @@ onLoad(async (query: any) => {
   strengths.value = r.strengths || []
   weaknesses.value = r.weaknesses || []
   suggestion.value = r.suggestion || '请继续练习提升。'
+  delta.value = r.delta || {}
+  hasPrevious.value = r.has_previous || false
 })
 
 function getScoreColor(score: number): string {
@@ -165,6 +186,7 @@ function shareReport() {
 .report__tag--success { background: #E8F5E9; color: var(--color-primary-light); }
 .report__tag--warning { background: #FFF3E0; color: #F57C00; }
 .report__suggestion-box { background: var(--color-bg); border-radius: 4px; padding: 24rpx; border-left: 6rpx solid #C41E1A; }
+.report__delta-summary { text-align: center; margin-top: 16rpx; padding: 12rpx; background: rgba(139,26,26,0.04); border-radius: 4px; font-size: 24rpx; color: var(--color-text-secondary); }
 .report__suggestion-text { font-size: 24rpx; color: var(--color-text-secondary); line-height: 1.6; }
 
 /* Actions */

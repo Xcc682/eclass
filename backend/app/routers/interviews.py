@@ -117,10 +117,12 @@ async def respond(practice_id: str, data: RespondRequest, user: User = Depends(g
     ended = result.get("finished", False) or round_number >= 6
     phase = result.get("phase", "")
     follow_up = result.get("follow_up_type", "")
+    scenario = result.get("scenario", "")
+    snapshot = result.get("snapshot_scores", {})
     db.add(InterviewMessage(record_id=record.id, role="ai", content=question, round_number=round_number,
-                            analysis_json=json.dumps({"comment": comment, "phase": phase, "follow_up_type": follow_up}, ensure_ascii=False)))
+                            analysis_json=json.dumps({"comment": comment, "phase": phase, "follow_up_type": follow_up, "snapshot_scores": snapshot, "scenario": scenario}, ensure_ascii=False)))
     record.total_rounds = round_number
-    return {"code": 0, "data": {"question": question, "analysis": {"comment": comment, "phase": phase, "follow_up_type": follow_up}, "is_completed": ended}}
+    return {"code": 0, "data": {"question": question, "analysis": {"comment": comment, "phase": phase, "follow_up_type": follow_up, "snapshot_scores": snapshot, "scenario": scenario}, "is_completed": ended}}
 
 
 @router.post("/practice/{practice_id}/end")
@@ -141,6 +143,33 @@ async def end_practice(practice_id: str, user: User = Depends(get_current_user),
     record.overall_score = int(report.get("overall_score", 0))
     record.report_json = json.dumps(report, ensure_ascii=False)
     user.total_points += max(record.overall_score // 10, 1)
+
+    # Historical comparison: find previous completed report for same scenario
+    previous = db.scalar(select(InterviewPracticeRecord).where(
+        InterviewPracticeRecord.user_id == user.id,
+        InterviewPracticeRecord.scenario_id == record.scenario_id,
+        InterviewPracticeRecord.status == "completed",
+        InterviewPracticeRecord.id != record.id,
+    ).order_by(InterviewPracticeRecord.completed_at.desc()).limit(1))
+
+    delta = {}
+    if previous and previous.report_json:
+        try:
+            prev_report = json.loads(previous.report_json)
+            prev_scores = prev_report.get("dimension_scores", {})
+            curr_scores = report.get("dimension_scores", {})
+            prev_overall = prev_report.get("overall_score", 0)
+            for dim in DIMENSIONS:
+                curr = curr_scores.get(dim, 0)
+                prev = prev_scores.get(dim, 0) if isinstance(prev_scores, dict) else 0
+                if isinstance(prev, (int, float)):
+                    delta[dim] = curr - int(prev)
+            delta["overall_score"] = record.overall_score - prev_overall
+        except Exception:
+            pass
+    report["delta"] = delta
+    report["has_previous"] = previous is not None
+
     scenario = db.get(InterviewScenario, record.scenario_id)
     db.add(GeneratedReport(user_id=user.id, report_type="interview", title=scenario.title if scenario else "入党谈话", score=record.overall_score, content_json=record.report_json))
     return {"code": 0, "data": report}
