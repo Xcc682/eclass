@@ -91,12 +91,22 @@ class KnowledgeSession(Base):
 
 class KnowledgeMessage(Base):
     __tablename__ = "knowledge_messages"
+    __table_args__ = (
+        UniqueConstraint("session_id", "role", "submission_id", name="uq_knowledge_message_submission_role"),
+    )
     id = Column(String, primary_key=True, default=gen_uuid)
     session_id = Column(String, ForeignKey("knowledge_sessions.id"), nullable=False, index=True)
     role = Column(String(20), nullable=False)
     content = Column(Text, nullable=False)
     citations_json = Column(Text, default="[]", nullable=False)
+    answer_json = Column(Text, default="{}", nullable=False)
+    submission_id = Column(String(64), nullable=True, index=True)
+    status = Column(String(20), default="sent", nullable=False, index=True)
+    error = Column(Text, nullable=True)
+    feedback = Column(String(20), nullable=True)
+    feedback_reason = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class KnowledgeTemplate(Base):

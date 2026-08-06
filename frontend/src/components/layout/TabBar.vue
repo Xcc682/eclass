@@ -22,7 +22,7 @@ const tabs = computed(() => {
   const current = route.path
   return [
     { path: '/pages/index/index', label: '首页', icon: 'home', active: current === '/pages/index/index' },
-    { path: '/pages/interview/interview', label: '情景实训', icon: 'training', active: current.startsWith('/pages/interview') },
+    { path: '/pages/interview/interview', label: '入党谈话', icon: 'training', active: current.startsWith('/pages/interview') },
     { path: '/pages/community/community', label: '成长社区', icon: 'community', active: current === '/pages/community/community' },
     { path: '/pages/knowledge/knowledge', label: '知识库', icon: 'knowledge', active: current.startsWith('/pages/knowledge') },
     { path: '/pages/community/profile', label: '我的', icon: 'profile', active: current === '/pages/community/profile' },

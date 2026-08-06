@@ -14,10 +14,15 @@
     {"path": "pages/knowledge/favorites", "style": {"navigationBarTitleText": "我的资料夹", "navigationBarBackgroundColor": "#C41E1A", "navigationBarTextStyle": "white"}},
     {"path": "pages/knowledge/manage", "style": {"navigationBarTitleText": "资料管理", "navigationBarBackgroundColor": "#C41E1A", "navigationBarTextStyle": "white"}},
     {"path": "pages/community/community", "style": {"navigationBarTitleText": "成长社区", "navigationBarBackgroundColor": "#C41E1A", "navigationBarTextStyle": "white"}},
-    {"path": "pages/community/forum", "style": {"navigationBarTitleText": "学习圈", "navigationBarBackgroundColor": "#C41E1A", "navigationBarTextStyle": "white"}},
     {"path": "pages/community/post-detail", "style": {"navigationBarTitleText": "帖子详情", "navigationBarBackgroundColor": "#C41E1A", "navigationBarTextStyle": "white"}},
     {"path": "pages/community/create-post", "style": {"navigationBarTitleText": "发布帖子", "navigationBarBackgroundColor": "#C41E1A", "navigationBarTextStyle": "white"}},
+    {"path": "pages/community/task-detail", "style": {"navigationBarTitleText": "教师任务", "navigationBarBackgroundColor": "#431B18", "navigationBarTextStyle": "white"}},
+    {"path": "pages/community/task-manage", "style": {"navigationBarTitleText": "教师工作台", "navigationBarBackgroundColor": "#2D2621", "navigationBarTextStyle": "white"}},
+    {"path": "pages/community/notifications", "style": {"navigationBarTitleText": "社区消息", "navigationBarBackgroundColor": "#431B18", "navigationBarTextStyle": "white"}},
+    {"path": "pages/community/my-community", "style": {"navigationBarTitleText": "我的社区", "navigationBarBackgroundColor": "#3A2420", "navigationBarTextStyle": "white"}},
+    {"path": "pages/community/moderation", "style": {"navigationBarTitleText": "内容审核", "navigationBarBackgroundColor": "#302824", "navigationBarTextStyle": "white"}},
     {"path": "pages/community/growth", "style": {"navigationBarTitleText": "成长档案", "navigationBarBackgroundColor": "#C41E1A", "navigationBarTextStyle": "white"}},
+    {"path": "pages/community/practices", "style": {"navigationBarTitleText": "训练中心", "navigationBarBackgroundColor": "#C41E1A", "navigationBarTextStyle": "white"}},
     {"path": "pages/community/profile", "style": {"navigationBarTitleText": "我的", "navigationBarBackgroundColor": "#C41E1A", "navigationBarTextStyle": "white"}},
     {"path": "pages/community/reports", "style": {"navigationBarTitleText": "我的报告", "navigationBarBackgroundColor": "#C41E1A", "navigationBarTextStyle": "white"}},
     {"path": "pages/debate/debate", "style": {"navigationBarTitleText": "辩论赛陪练", "navigationBarBackgroundColor": "#C41E1A", "navigationBarTextStyle": "white"}},
@@ -33,8 +38,7 @@
     "navigationBarBackgroundColor": "#C41E1A",
     "backgroundColor": "#FFF8F0",
     "backgroundColorTop": "#FFF8F0",
-    "backgroundColorBottom": "#FFF8F0",
-    "usingComponents": true
+    "backgroundColorBottom": "#FFF8F0"
   },
   "tabBar": {
     "color": "#999999",
@@ -43,7 +47,7 @@
     "borderStyle": "white",
     "list": [
       {"pagePath": "pages/index/index", "text": "首页", "iconPath": "static/images/icons/home.png", "selectedIconPath": "static/images/icons/home-active.png"},
-      {"pagePath": "pages/interview/interview", "text": "情景实训", "iconPath": "static/images/icons/training.png", "selectedIconPath": "static/images/icons/training-active.png"},
+      {"pagePath": "pages/interview/interview", "text": "入党谈话", "iconPath": "static/images/icons/training.png", "selectedIconPath": "static/images/icons/training-active.png"},
       {"pagePath": "pages/community/community", "text": "成长社区", "iconPath": "static/images/icons/community.png", "selectedIconPath": "static/images/icons/community-active.png"},
       {"pagePath": "pages/knowledge/knowledge", "text": "知识库", "iconPath": "static/images/icons/knowledge.png", "selectedIconPath": "static/images/icons/knowledge-active.png"},
       {"pagePath": "pages/community/profile", "text": "我的", "iconPath": "static/images/icons/profile.png", "selectedIconPath": "static/images/icons/profile-active.png"}

@@ -1,0 +1,104 @@
+name: eclass
+
+# Fast server deployment that intentionally reuses backend/.env and the same
+# development database/object-storage accounts as the local configuration.
+# It is for a demo/test server, not a hardened public production environment.
+services:
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5667:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+  backend:
+    build: ./backend
+    env_file:
+      - ./backend/.env
+    environment:
+      # The copied backend/.env has localhost URLs for local development.
+      # These overrides point it at the Docker services on the server.
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@db:5432/sixiang
+      DATABASE_URL_SYNC: postgresql://postgres:postgres@db:5432/sixiang
+      VECTOR_DATABASE_URL: postgresql://postgres:postgres@db:5432/sixiang
+      REDIS_URL: redis://redis:6379/0
+      S3_ENDPOINT: http://minio:9000
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin123
+      S3_BUCKET: immersive-media
+      # The embedding model is copied from the development machine into this
+      # named volume. Keep all Hugging Face calls offline on the server.
+      HF_HUB_OFFLINE: "1"
+      TRANSFORMERS_OFFLINE: "1"
+    ports:
+      - "127.0.0.1:7899:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    volumes:
+      - backend_storage:/app/storage
+      - model_cache:/root/.cache/huggingface
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health/ready')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: sixiang
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sixiang"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    volumes:
+      - miniodata:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  backend_storage:
+  model_cache:
+  pgdata:
+  redisdata:
+  miniodata:

@@ -25,6 +25,6 @@ export const tourApi = {
     api.post<{ answer: string }>('/tours/ask', { site_id, question, record_id }),
   generateReport: (site_id: string, qa_history: string[] = [], record_id?: string) =>
     api.post<{ id: string; report: string }>('/tours/generate-report', { site_id, qa_history, record_id }),
-  getSession: (id: string) => api.get<{ id: string; site_id: string; qa_history: Array<{q:string;a:string}>; report: string; completed: boolean }>(`/tours/sessions/${id}`),
+  getSession: (id: string) => api.get<{ id: string; site_id: string; qa_history: Array<{q:string;a:string}>; report: string; completed: boolean; note?: string }>(`/tours/sessions/${id}`),
   getHistory: () => api.get<TourHistoryItem[]>('/tours/history'),
 }

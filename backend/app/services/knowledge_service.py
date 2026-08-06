@@ -6,10 +6,10 @@ import hashlib
 import logging
 import re
 from pathlib import Path
-from threading import Lock
+from threading import Lock, Thread
 from typing import Any
 
-from sqlalchemy import create_engine, delete, or_, select, text
+from sqlalchemy import bindparam, create_engine, delete, func, or_, select, text
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -149,7 +149,10 @@ def _vector_engine():
     global _vector_engine_instance, _vector_engine_url
     with _vector_engine_lock:
         if _vector_engine_instance is None or _vector_engine_url != settings.VECTOR_DATABASE_URL:
-            _vector_engine_instance = create_engine(settings.VECTOR_DATABASE_URL, pool_pre_ping=True)
+            engine_options: dict[str, Any] = {"pool_pre_ping": True, "pool_timeout": 2}
+            if settings.VECTOR_DATABASE_URL.startswith("postgresql"):
+                engine_options["connect_args"] = {"connect_timeout": 2}
+            _vector_engine_instance = create_engine(settings.VECTOR_DATABASE_URL, **engine_options)
             _vector_engine_url = settings.VECTOR_DATABASE_URL
     return _vector_engine_instance
 
@@ -159,8 +162,17 @@ def _log_retrieval_stage(stage: str, **extra: Any) -> None:
     logger.info("[knowledge] %s %s", stage, details)
 
 
+def _warm_embedding_worker() -> None:
+    try:
+        _log_retrieval_stage("embedding_warmup_start", model=settings.EMBEDDING_MODEL)
+        _embedding_model()
+        _log_retrieval_stage("embedding_warmup_done", model=settings.EMBEDDING_MODEL)
+    except Exception as exc:
+        logger.warning("[knowledge] embedding_warmup_failed error=%s: %s", exc.__class__.__name__, exc)
+
+
 def start_embedding_warmup() -> bool:
-    """Block the startup event until the embedding model is fully loaded."""
+    """Non-blocking warmup — model loads in background thread."""
     global _warmup_started
     if not settings.VECTOR_DATABASE_URL or _model is not None:
         return False
@@ -168,14 +180,8 @@ def start_embedding_warmup() -> bool:
         if _warmup_started:
             return False
         _warmup_started = True
-    _log_retrieval_stage("embedding_warmup_start", model=settings.EMBEDDING_MODEL)
-    try:
-        _embedding_model()
-        _log_retrieval_stage("embedding_warmup_done", model=settings.EMBEDDING_MODEL)
-        return True
-    except Exception as exc:
-        logger.warning("[knowledge] embedding_warmup_failed error=%s: %s", exc.__class__.__name__, exc)
-        return False
+    Thread(target=_warm_embedding_worker, name="embedding-warmup", daemon=True).start()
+    return True
 
 
 def _ensure_vector_schema(vector_engine) -> None:
@@ -359,7 +365,13 @@ def _keyword_terms(query: str, max_terms: int = 18) -> list[str]:
     return terms[:max_terms]
 
 
-def _keyword_hits(db: Session, query: str, category: str | None, limit: int = 20) -> list[dict]:
+def _keyword_hits(
+    db: Session,
+    query: str,
+    category: str | None,
+    limit: int = 24,
+    document_ids: list[str] | None = None,
+) -> list[dict]:
     terms = _keyword_terms(query)
     if engine.dialect.name == "sqlite" and _ensure_fts():
         try:
@@ -386,6 +398,13 @@ def _keyword_hits(db: Session, query: str, category: str | None, limit: int = 20
             if category:
                 sql += " AND d.category = :category"
                 params["category"] = category
+            if document_ids:
+                placeholders = []
+                for index, document_id in enumerate(document_ids):
+                    key = f"document_id_{index}"
+                    placeholders.append(f":{key}")
+                    params[key] = document_id
+                sql += f" AND d.id IN ({','.join(placeholders)})"
             sql += " ORDER BY CASE WHEN d.title LIKE :title_pattern THEN 0 ELSE 1 END, score LIMIT :limit"
             rows = [dict(row._mapping) for row in db.execute(text(sql), params)]
             if rows:
@@ -399,11 +418,13 @@ def _keyword_hits(db: Session, query: str, category: str | None, limit: int = 20
                  .where(KnowledgeDocument.status == "published", or_(*content_filters)))
     if category:
         statement = statement.where(KnowledgeDocument.category == category)
+    if document_ids:
+        statement = statement.where(KnowledgeDocument.id.in_(document_ids))
     chunks = db.scalars(statement.limit(limit)).all()
     return [{"chunk_id": chunk.id, "document_id": chunk.document_id, "chunk_index": chunk.chunk_index, "content": chunk.content, "score": index} for index, chunk in enumerate(chunks)]
 
 
-def _vector_hits(query: str, limit: int = 20) -> list[dict]:
+def _vector_hits(query: str, limit: int = 24, document_ids: list[str] | None = None) -> list[dict]:
     vector_engine = _vector_engine()
     if vector_engine is None:
         return []
@@ -412,15 +433,21 @@ def _vector_hits(query: str, limit: int = 20) -> list[dict]:
         _ensure_vector_schema(vector_engine)
         vector = _embedding_model().encode([query], normalize_embeddings=True)[0]
         value = "[" + ",".join(str(float(item)) for item in vector) + "]"
-        with vector_engine.connect() as connection:
-            rows = connection.execute(text("""SELECT chunk_id, document_id, content,
+        scope_sql = " AND document_id IN :document_ids" if document_ids else ""
+        statement = text(f"""SELECT chunk_id, document_id, content,
                 embedding <=> CAST(:embedding AS vector) AS score
                 FROM knowledge_vectors
                 WHERE embedding <=> CAST(:embedding AS vector) <= :max_distance
-                ORDER BY score LIMIT :limit"""), {
+                {scope_sql}
+                ORDER BY score LIMIT :limit""")
+        if document_ids:
+            statement = statement.bindparams(bindparam("document_ids", expanding=True))
+        with vector_engine.connect() as connection:
+            rows = connection.execute(statement, {
                     "embedding": value,
                     "max_distance": settings.VECTOR_MAX_COSINE_DISTANCE,
                     "limit": limit,
+                    **({"document_ids": document_ids} if document_ids else {}),
                 })
             result = [dict(row._mapping) for row in rows]
             _log_retrieval_stage("vector_retrieval_done", hits=len(result))
@@ -430,11 +457,23 @@ def _vector_hits(query: str, limit: int = 20) -> list[dict]:
         return []
 
 
-def retrieve(db: Session, query: str, category: str | None = None, limit: int = 6, use_vector: bool = True) -> list[dict]:
+def retrieve(
+    db: Session,
+    query: str,
+    category: str | None = None,
+    limit: int = 6,
+    use_vector: bool = True,
+    document_ids: list[str] | None = None,
+) -> list[dict]:
+    query_terms = _keyword_terms(query)
     _log_retrieval_stage("keyword_retrieval_start", category=category or "all")
-    keyword = _keyword_hits(db, query, category)
+    keyword = _keyword_hits(db, query, category, document_ids=document_ids)
     _log_retrieval_stage("keyword_retrieval_done", hits=len(keyword))
-    vector = _vector_hits(query) if use_vector else []
+    vector = _vector_hits(query, document_ids=document_ids) if use_vector else []
+    vector_distances = [float(row["score"]) for row in vector]
+    vector_cutoff = None
+    if vector_distances:
+        vector_cutoff = min(settings.VECTOR_MAX_COSINE_DISTANCE, min(vector_distances) + 0.12)
     fused: dict[str, dict] = {}
     for source, rows in (("keyword", keyword), ("vector", vector)):
         for rank, row in enumerate(rows, start=1):
@@ -442,13 +481,37 @@ def retrieve(db: Session, query: str, category: str | None = None, limit: int = 
             entry = fused.setdefault(chunk_id, {**row, "rrf_score": 0.0, "retrieval": []})
             entry["rrf_score"] += 1.0 / (60 + rank)
             entry["retrieval"].append(source)
+            if source == "keyword":
+                entry["keyword_score"] = row.get("score")
+            else:
+                entry["vector_distance"] = float(row.get("score", 1.0))
+    for item in fused.values():
+        document = db.get(KnowledgeDocument, item["document_id"])
+        if document and any(term in (document.title or "").lower() for term in query_terms[:6]):
+            item["rrf_score"] += 0.02
     ordered = sorted(fused.values(), key=lambda item: item["rrf_score"], reverse=True)
     results: list[dict] = []
+    seen_hashes: set[str] = set()
+    per_document: dict[str, int] = {}
     for item in ordered:
         chunk = db.get(KnowledgeChunk, item["chunk_id"])
         document = db.get(KnowledgeDocument, item["document_id"])
         if not chunk or not document or document.status != "published" or (category and document.category != category):
             continue
+        if document_ids and document.id not in document_ids:
+            continue
+        matched_terms = [term for term in query_terms if term in f"{document.title}\n{chunk.content}".lower()]
+        title_hit = any(term in (document.title or "").lower() for term in query_terms[:8])
+        has_keyword = "keyword" in item["retrieval"] and (
+            title_hit or len(matched_terms) >= 2 or any(len(term) >= 4 for term in matched_terms)
+        )
+        vector_relevant = vector_cutoff is not None and item.get("vector_distance", 1.0) <= vector_cutoff
+        if not has_keyword and not vector_relevant:
+            continue
+        if chunk.content_hash in seen_hashes or per_document.get(document.id, 0) >= 3:
+            continue
+        seen_hashes.add(chunk.content_hash)
+        per_document[document.id] = per_document.get(document.id, 0) + 1
         results.append({
             "chunk_id": chunk.id,
             "chunk_index": chunk.chunk_index,
@@ -460,6 +523,8 @@ def retrieve(db: Session, query: str, category: str | None = None, limit: int = 
             "category": document.category,
             "score": item["rrf_score"],
             "retrieval": item["retrieval"],
+            "vector_distance": item.get("vector_distance"),
+            "keyword_score": item.get("keyword_score"),
         })
         if len(results) >= limit:
             break
@@ -479,6 +544,8 @@ def retrieve(db: Session, query: str, category: str | None = None, limit: int = 
         )
         if category:
             statement = statement.where(KnowledgeDocument.category == category)
+        if document_ids:
+            statement = statement.where(KnowledgeDocument.id.in_(document_ids))
         for document in db.scalars(statement.limit(limit)).all():
             results.append({
                 "chunk_id": f"legacy:{document.id}",
@@ -495,23 +562,45 @@ def retrieve(db: Session, query: str, category: str | None = None, limit: int = 
     return results
 
 
-def retrieve_with_fresh_session(query: str, category: str | None = None, limit: int = 6, use_vector: bool = True) -> list[dict]:
+def retrieve_with_fresh_session(
+    query: str,
+    category: str | None = None,
+    limit: int = 6,
+    use_vector: bool = True,
+    document_ids: list[str] | None = None,
+) -> list[dict]:
     """Run retrieval in an isolated DB session so callers may safely offload it."""
     db = SessionLocal()
     try:
-        return retrieve(db, query, category, limit=limit, use_vector=use_vector)
+        return retrieve(db, query, category, limit=limit, use_vector=use_vector, document_ids=document_ids)
     finally:
         db.close()
 
 
-async def retrieve_async(query: str, category: str | None = None, limit: int = 6, use_vector: bool = True) -> list[dict]:
-    return await asyncio.to_thread(retrieve_with_fresh_session, query, category, limit, use_vector)
+async def retrieve_async(
+    query: str,
+    category: str | None = None,
+    limit: int = 6,
+    use_vector: bool = True,
+    document_ids: list[str] | None = None,
+) -> list[dict]:
+    return await asyncio.to_thread(retrieve_with_fresh_session, query, category, limit, use_vector, document_ids)
 
 
 def retrieval_status() -> dict:
+    vector_healthy = False
+    if settings.VECTOR_DATABASE_URL:
+        try:
+            vector_engine = _vector_engine()
+            with vector_engine.connect() as connection:
+                connection.execute(text("SELECT 1"))
+            vector_healthy = True
+        except Exception:
+            vector_healthy = False
     return {
-        "mode": "hybrid" if settings.VECTOR_DATABASE_URL else "sqlite_fts5",
+        "mode": "hybrid" if vector_healthy else "sqlite_fts5",
         "vector_configured": bool(settings.VECTOR_DATABASE_URL),
+        "vector_healthy": vector_healthy,
         "embedding_model": settings.EMBEDDING_MODEL,
         "embedding_loaded": _model is not None,
         "embedding_warmup_started": _warmup_started,

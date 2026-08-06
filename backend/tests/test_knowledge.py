@@ -16,6 +16,8 @@ from app.database import SessionLocal
 from app.main import app
 from app.models.user import User
 from app.models.knowledge import KnowledgeChunk, KnowledgeDocument, KnowledgeFavorite, KnowledgeIngestionJob, KnowledgeMessage, KnowledgeView
+from app.routers.knowledge import _normalize_answer
+from app.services.ai_service import AIResponseValidationError, AIService
 from app.services.knowledge_service import _vector_engine, chunk_text, parse_document
 
 
@@ -30,6 +32,109 @@ class KnowledgeUnitTests(unittest.TestCase):
             path.write_text("标题\n\n正文内容", encoding="utf-8")
             self.assertEqual(parse_document(path), "标题\n\n正文内容")
 
+    def test_structured_answer_rewrites_and_validates_citations(self):
+        citations = [
+            {"index": 1, "document_id": "d1", "document_title": "资料一", "chunk_id": "c1"},
+            {"index": 2, "document_id": "d2", "document_title": "资料二", "chunk_id": "c2"},
+        ]
+        result = _normalize_answer({
+            "blocks": [
+                {"type": "paragraph", "text": "结论一[2][2]", "citations": [2, 2, 9]},
+                {"type": "paragraph", "text": "没有依据的结论", "citations": []},
+            ],
+            "follow_up_suggestions": ["它的历史背景是什么？"],
+        }, citations, "核心内涵是什么？", [{"content": "结论一只说明核心内涵。"}])
+        self.assertEqual(result["used_citation_indexes"], [1])
+        self.assertEqual(len(result["citations"]), 1)
+        self.assertEqual(result["citations"][0]["document_id"], "d2")
+        self.assertNotIn("[2][2]", result["answer"])
+        self.assertNotIn("没有依据的结论", result["answer"])
+        self.assertEqual(result["follow_up_suggestions"], [])
+
+    def test_citations_are_renumbered_after_document_grouping(self):
+        citations = [
+            {"index": 1, "document_id": "document-b", "chunk_id": "b1"},
+            {"index": 2, "document_id": "document-c", "chunk_id": "c1"},
+            {"index": 3, "document_id": "document-b", "chunk_id": "b2"},
+            {"index": 4, "document_id": "document-a", "chunk_id": "a1"},
+            {"index": 5, "document_id": "document-b", "chunk_id": "b3"},
+        ]
+        result = _normalize_answer({
+            "blocks": [
+                {"type": "paragraph", "text": "A", "citations": [4]},
+                {"type": "paragraph", "text": "B", "citations": [1, 3, 5]},
+                {"type": "paragraph", "text": "C", "citations": [2]},
+            ],
+        }, citations)
+
+        self.assertEqual(
+            [item["document_id"] for item in result["citations"]],
+            ["document-a", "document-b", "document-b", "document-b", "document-c"],
+        )
+        self.assertEqual([item["index"] for item in result["citations"]], [1, 2, 3, 4, 5])
+        self.assertEqual(
+            [block["citations"] for block in result["answer_blocks"]],
+            [[1], [2, 3, 4], [5]],
+        )
+
+    def test_truncated_json_answer_recovers_complete_blocks(self):
+        citations = [{"index": 1, "document_id": "document-a", "chunk_id": "a1"}]
+        truncated = '''{
+          "blocks": [
+            {"type":"heading","text":"Rules","citations":[]},
+            {"type":"paragraph","text":"Complete fact","citations":**[1]**},
+            {"type":"paragraph","text":"unfinished
+        '''
+        result = _normalize_answer(truncated, citations)
+
+        self.assertEqual([block["text"] for block in result["answer_blocks"]], ["Rules", "Complete fact"])
+        self.assertEqual(result["answer_blocks"][1]["citations"], [1])
+        self.assertNotIn('"blocks"', result["answer"])
+
+    def test_citations_are_sorted_and_deduplicated_inside_each_block(self):
+        citations = [
+            {"index": 1, "document_id": "document-a", "chunk_id": "a1"},
+            {"index": 2, "document_id": "document-b", "chunk_id": "b1"},
+        ]
+        result = _normalize_answer({
+            "blocks": [{"type": "paragraph", "text": "同一结论", "citations": [2, 1, 2]}],
+        }, citations)
+
+        self.assertEqual(result["answer_blocks"][0]["citations"], [1, 2])
+        self.assertTrue(result["answer"].endswith("[1][2]"))
+
+    def test_tool_selector_accepts_one_valid_call_and_rejects_direct_answers(self):
+        service = AIService()
+        valid_message = {
+            "tool_calls": [{
+                "id": "call-1",
+                "type": "function",
+                "function": {"name": "describe_assistant", "arguments": '{"topic":"identity"}'},
+            }],
+        }
+        with patch.object(service, "_call_tool_api", new=AsyncMock(return_value=valid_message)):
+            selected = asyncio.run(service.select_knowledge_tool("你是谁"))
+        self.assertEqual(selected["name"], "describe_assistant")
+        self.assertEqual(selected["arguments"], {"topic": "identity"})
+
+        repeated_same_tool = {
+            "tool_calls": [
+                valid_message["tool_calls"][0],
+                {
+                    "id": "call-2",
+                    "type": "function",
+                    "function": {"name": "describe_assistant", "arguments": '{"topic":"capabilities"}'},
+                },
+            ],
+        }
+        with patch.object(service, "_call_tool_api", new=AsyncMock(return_value=repeated_same_tool)):
+            selected = asyncio.run(service.select_knowledge_tool("你是谁"))
+        self.assertEqual(selected["arguments"], {"topic": "identity"})
+
+        with patch.object(service, "_call_tool_api", new=AsyncMock(return_value={"content": "我是助手"})):
+            with self.assertRaises(AIResponseValidationError):
+                asyncio.run(service.select_knowledge_tool("你是谁"))
+
 
 class KnowledgeApiTests(unittest.TestCase):
     @classmethod
@@ -41,7 +146,23 @@ class KnowledgeApiTests(unittest.TestCase):
     def tearDownClass(cls):
         cls.context.__exit__(None, None, None)
 
+    def setUp(self):
+        async def choose_search(question: str, _history=None):
+            return {
+                "name": "search_knowledge",
+                "arguments": {"query": question},
+                "tool_call_id": f"test-{uuid.uuid4().hex}",
+            }
+
+        self.tool_selector = AsyncMock(side_effect=choose_search)
+        self.tool_patcher = patch(
+            "app.routers.knowledge.ai_service.select_knowledge_tool",
+            new=self.tool_selector,
+        )
+        self.tool_patcher.start()
+
     def tearDown(self):
+        self.tool_patcher.stop()
         with SessionLocal() as db:
             documents = db.scalars(select(KnowledgeDocument).where(KnowledgeDocument.source == "测试权威来源")).all()
             ids = [item.id for item in documents]
@@ -72,10 +193,84 @@ class KnowledgeApiTests(unittest.TestCase):
                         {"document_ids": ids},
                     )
 
+    def test_assistant_intro_skips_retrieval_and_is_restored_from_history(self):
+        headers = self.login(f"130{uuid.uuid4().int % 100_000_000:08d}")
+        submission = uuid.uuid4().hex
+        self.tool_selector.side_effect = None
+        self.tool_selector.return_value = {
+            "name": "describe_assistant",
+            "arguments": {"topic": "identity"},
+            "tool_call_id": "intro-call",
+        }
+        with patch("app.routers.knowledge.retrieve_async", new=AsyncMock()) as retrieve_mock, patch(
+            "app.routers.knowledge.ai_service.knowledge_answer", new=AsyncMock()
+        ) as answer_mock:
+            response = self.client.post(
+                "/api/v1/knowledge/ask",
+                headers=headers,
+                json={"question": "你是谁", "submission_id": submission},
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()["data"]
+        self.assertEqual(data["response_kind"], "assistant_intro")
+        self.assertEqual(data["selected_tool"], "describe_assistant")
+        self.assertEqual(data["citations"], [])
+        self.assertIn("知识库助手", data["answer"])
+        retrieve_mock.assert_not_awaited()
+        answer_mock.assert_not_awaited()
+
+        detail = self.client.get(
+            f"/api/v1/knowledge/sessions/{data['session_id']}", headers=headers,
+        ).json()["data"]
+        assistant = next(item for item in detail["messages"] if item["role"] == "assistant")
+        self.assertEqual(assistant["response_kind"], "assistant_intro")
+        self.assertEqual(assistant["selected_tool"], "describe_assistant")
+
+        cached = self.client.post(
+            "/api/v1/knowledge/ask",
+            headers=headers,
+            json={
+                "question": "你是谁",
+                "session_id": data["session_id"],
+                "submission_id": submission,
+            },
+        ).json()["data"]
+        self.assertTrue(cached["cached"])
+        self.assertEqual(self.tool_selector.await_count, 1)
+        self.assertEqual(
+            self.client.delete(f"/api/v1/knowledge/sessions/{data['session_id']}", headers=headers).status_code,
+            200,
+        )
+
+    def test_invalid_tool_selection_falls_back_to_strict_knowledge_search(self):
+        headers = self.login(f"139{uuid.uuid4().int % 100_000_000:08d}")
+        self.tool_selector.side_effect = AIResponseValidationError("invalid tool")
+        retrieve_mock = AsyncMock(return_value=[])
+        with patch("app.routers.knowledge.retrieve_async", new=retrieve_mock), patch(
+            "app.routers.knowledge.ai_service.knowledge_answer", new=AsyncMock()
+        ) as answer_mock:
+            response = self.client.post(
+                "/api/v1/knowledge/ask",
+                headers=headers,
+                json={"question": "一个无法检索的问题", "submission_id": uuid.uuid4().hex},
+            )
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()["data"]
+        self.assertEqual(data["selected_tool"], "search_knowledge")
+        self.assertEqual(data["response_kind"], "no_evidence")
+        self.assertTrue(data["degraded"])
+        retrieve_mock.assert_awaited_once()
+        answer_mock.assert_not_awaited()
+        self.assertEqual(
+            self.client.delete(f"/api/v1/knowledge/sessions/{data['session_id']}", headers=headers).status_code,
+            200,
+        )
+
     def login(self, phone: str, role: str = "student") -> dict[str, str]:
-        response = self.client.post("/api/v1/auth/login", json={"phone": phone, "password": "test-password"})
-        self.assertEqual(response.status_code, 200)
-        user_id = response.json()["data"]["user"]["id"]
+        registered = self.client.post("/api/v1/auth/register", json={"phone": phone, "password": "test-password"})
+        self.assertEqual(registered.status_code, 201)
+        response = registered
+        user_id = registered.json()["data"]["user"]["id"]
         if role != "student":
             with SessionLocal() as db:
                 user = db.get(User, user_id)
@@ -234,7 +429,7 @@ class KnowledgeApiTests(unittest.TestCase):
             "app.routers.knowledge.ai_service.knowledge_answer", new=AsyncMock()
         ) as mocked:
             response = self.client.post("/api/v1/knowledge/ask", headers=headers, json={"question": f"不存在的证据{uuid.uuid4().hex}"})
-        self.assertEqual(response.json()["data"]["answer"], "当前知识库没有足够依据。")
+        self.assertTrue(response.json()["data"]["answer"].startswith("当前知识库没有足够依据"))
         session_id = response.json()["data"]["session_id"]
         other_headers = self.login(f"133{uuid.uuid4().int % 100_000_000:08d}")
         self.assertEqual(self.client.delete(f"/api/v1/knowledge/sessions/{session_id}", headers=other_headers).status_code, 404)
@@ -266,6 +461,69 @@ class KnowledgeApiTests(unittest.TestCase):
         self.assertEqual(response.json()["data"]["citations"][0]["document_id"], "doc-timeout-fallback")
         self.assertEqual(retrieve_mock.await_count, 2)
         answer_mock.assert_awaited_once()
+
+    def test_conversation_context_idempotency_session_edit_and_feedback(self):
+        headers = self.login(f"132{uuid.uuid4().int % 100_000_000:08d}")
+        context = [{
+            "document_id": "doc-context", "title": "上下文资料", "source": "官方来源", "source_url": "",
+            "chunk_id": "chunk-context", "chunk_index": 0, "content": "第一项规定与第二项规定适用范围不同。", "score": 1.0,
+        }]
+        answer_value = {"blocks": [{"type": "paragraph", "text": "第一项规定适用于基层组织。", "citations": [1]}], "follow_up_suggestions": ["第二项规定是什么？"]}
+        retrieve_mock = AsyncMock(return_value=context)
+        answer_mock = AsyncMock(return_value=answer_value)
+        submission = uuid.uuid4().hex
+        with patch("app.routers.knowledge.retrieve_async", new=retrieve_mock), patch(
+            "app.routers.knowledge.ai_service.knowledge_answer", new=answer_mock
+        ):
+            first = self.client.post("/api/v1/knowledge/ask", headers=headers, json={"question": "第一项规定是什么？", "submission_id": submission})
+            self.assertEqual(first.status_code, 200, first.text)
+            first_data = first.json()["data"]
+            cached = self.client.post("/api/v1/knowledge/ask", headers=headers, json={
+                "question": "第一项规定是什么？", "session_id": first_data["session_id"], "submission_id": submission,
+            })
+            self.assertTrue(cached.json()["data"]["cached"])
+            follow = self.client.post("/api/v1/knowledge/ask", headers=headers, json={
+                "question": "它和上一个规定有什么区别？", "session_id": first_data["session_id"], "submission_id": uuid.uuid4().hex,
+            })
+            self.assertEqual(follow.status_code, 200, follow.text)
+
+        self.assertEqual(answer_mock.await_count, 2)
+        self.assertIn("第一项规定是什么", retrieve_mock.await_args_list[1].args[0])
+        message_id = first_data["message_id"]
+        feedback = self.client.post(f"/api/v1/knowledge/messages/{message_id}/feedback", headers=headers, json={"helpful": True, "reason": "引用清楚"})
+        self.assertEqual(feedback.json()["data"]["feedback"], "helpful")
+        renamed = self.client.patch(f"/api/v1/knowledge/sessions/{first_data['session_id']}", headers=headers, json={"title": "规定比较"})
+        self.assertEqual(renamed.json()["data"]["title"], "规定比较")
+        detail = self.client.get(f"/api/v1/knowledge/sessions/{first_data['session_id']}", headers=headers).json()["data"]
+        self.assertEqual(len([item for item in detail["messages"] if item["role"] == "user"]), 2)
+        self.assertEqual(self.client.delete(f"/api/v1/knowledge/sessions/{first_data['session_id']}", headers=headers).status_code, 200)
+
+    def test_failed_question_is_persisted_and_can_retry(self):
+        headers = self.login(f"131{uuid.uuid4().int % 100_000_000:08d}")
+        submission = uuid.uuid4().hex
+        context = [{
+            "document_id": "doc-retry", "title": "重试资料", "source": "官方来源", "source_url": "",
+            "chunk_id": "chunk-retry", "chunk_index": 0, "content": "用于验证失败重试。", "score": 1.0,
+        }]
+        with patch("app.routers.knowledge.retrieve_async", new=AsyncMock(return_value=context)), patch(
+            "app.routers.knowledge.ai_service.knowledge_answer", new=AsyncMock(side_effect=RuntimeError("offline"))
+        ):
+            failed = self.client.post("/api/v1/knowledge/ask", headers=headers, json={"question": "如何重试？", "submission_id": submission})
+        self.assertEqual(failed.status_code, 503)
+        sessions = self.client.get("/api/v1/knowledge/sessions", headers=headers).json()["data"]
+        session_id = sessions[0]["id"]
+        detail = self.client.get(f"/api/v1/knowledge/sessions/{session_id}", headers=headers).json()["data"]
+        self.assertEqual(detail["messages"][0]["status"], "failed")
+        with patch("app.routers.knowledge.retrieve_async", new=AsyncMock(return_value=context)), patch(
+            "app.routers.knowledge.ai_service.knowledge_answer", new=AsyncMock(return_value={
+                "blocks": [{"type": "paragraph", "text": "现在可以重试。", "citations": [1]}], "follow_up_suggestions": []
+            })
+        ):
+            retried = self.client.post("/api/v1/knowledge/ask", headers=headers, json={
+                "question": "如何重试？", "session_id": session_id, "submission_id": submission,
+            })
+        self.assertEqual(retried.status_code, 200, retried.text)
+        self.assertEqual(self.client.delete(f"/api/v1/knowledge/sessions/{session_id}", headers=headers).status_code, 200)
 
 
 if __name__ == "__main__":

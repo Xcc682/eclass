@@ -29,6 +29,11 @@
             :volume-label="book.source_id"
             :discovered="discovered"
             :selected-option="selectedOption"
+            :route-hint="routeHint"
+            :decision-locked="decisionLocked"
+            :route-solved-count="route.solved_count"
+            :route-required-count="route.required_count"
+            :choosing="choosing"
             :note="note"
             :qa-history="qaHistory"
             :asking="asking"
@@ -46,8 +51,8 @@
           <div class="page-gloss"></div>
         </div>
       </div>
-      <button v-if="currentIndex > 0" class="edge edge--prev" aria-label="上一页" @click.stop="previous"><span>‹</span></button>
-      <button v-if="currentIndex < book.spreads.length - 1" class="edge edge--next" aria-label="下一页" @click.stop="next"><span>›</span></button>
+      <button v-if="canGoBack" class="edge edge--prev" aria-label="上一页" @click.stop="previous"><span>‹</span></button>
+      <button v-if="canAdvance" class="edge edge--next" aria-label="下一页" @click.stop="next"><span>›</span></button>
     </main>
     <!-- #endif -->
 
@@ -60,6 +65,11 @@
           :volume-label="book.source_id"
           :discovered="discovered"
           :selected-option="selectedOption"
+          :route-hint="routeHint"
+          :decision-locked="decisionLocked"
+          :route-solved-count="route.solved_count"
+          :route-required-count="route.required_count"
+          :choosing="choosing"
           :note="note"
           :qa-history="qaHistory"
           :asking="asking"
@@ -79,9 +89,11 @@
     <!-- #endif -->
 
     <footer class="reader-footer">
-      <button :disabled="currentIndex === 0" @click="previous">上一页</button>
-      <div class="reader-progress"><span><b>{{ String(currentIndex + 1).padStart(2, '0') }}</b> / {{ String(book.spreads.length).padStart(2, '0') }}</span><i><em :style="{ width: `${progressPercent}%` }"></em></i></div>
-      <button :disabled="currentIndex === book.spreads.length - 1" @click="next">下一页</button>
+      <button :disabled="!canGoBack || navigating" @click="previous">上一幕</button>
+      <div class="route-progress">
+        <div v-for="item in route.milestones" :key="item.id" :class="{ solved: item.solved, active: currentSpread.scene.milestone === item.key }"><i>{{ item.solved ? '✓' : '○' }}</i><span>{{ item.label }}</span></div>
+      </div>
+      <button :disabled="!canAdvance || navigating" @click="next">{{ currentSpread.type === 'detour' ? '返回岔路' : '下一幕' }}</button>
     </footer>
 
     <Transition name="drawer">
@@ -89,19 +101,19 @@
         <div>
           <header><span>CONTENTS</span><h2>{{ book.title }}</h2><button @click="drawerOpen = false">×</button></header>
           <button
-            v-for="(spread, index) in book.spreads"
+            v-for="spread in unlockedSpreads"
             :key="spread.id"
-            :class="{ active: currentIndex === index, visited: index <= furthestIndex }"
-            @click="jumpTo(index)"
+            :class="{ active: currentSpreadId === spread.id, visited: route.visited_spread_ids.includes(spread.id) }"
+            @click="jumpTo(spread.id)"
           >
-            <b>{{ String(index + 1).padStart(2, '0') }}</b><span><strong>{{ spread.scene.eyebrow || spread.type }}</strong><small>{{ spread.scene.title }}</small></span><i>{{ index <= furthestIndex ? '●' : '○' }}</i>
+            <b>{{ String(spread.order_index + 1).padStart(2, '0') }}</b><span><strong>{{ spread.scene.eyebrow || spread.type }}</strong><small>{{ spread.scene.title }}</small></span><i>{{ route.visited_spread_ids.includes(spread.id) ? '●' : '○' }}</i>
           </button>
-          <footer><span>{{ completed ? '本卷已归档' : `已阅读 ${progressPercent}%` }}</span><button @click="exitReader">保存并离开</button></footer>
+          <footer><span>{{ completed ? '本卷已归档' : `证据链 ${route.solved_count}/3` }}</span><button @click="exitReader">保存并离开</button></footer>
         </div>
       </aside>
     </Transition>
 
-    <div v-if="saveState === 'error'" class="save-toast" @click="persist({ current_spread: currentIndex })">进度保存失败 · 点击重试</div>
+    <div v-if="saveState === 'error'" class="save-toast" @click="persist({})">进度保存失败 · 点击重试</div>
   </div>
 </template>
 
@@ -113,10 +125,9 @@ import ImmersiveSpreadPage from './ImmersiveSpreadPage.vue'
 const props = defineProps<{ book: ImmersiveBook }>()
 const emit = defineEmits<{ (event: 'progress', value: ImmersiveBook['progress']): void; (event: 'completed'): void }>()
 
-const currentIndex = ref(Math.min(props.book.spreads.length - 1, Math.max(0, props.book.progress.current_spread || 0)))
-const furthestIndex = ref(currentIndex.value)
+const currentSpreadId = ref(props.book.progress.current_spread_id || props.book.spreads[props.book.progress.current_spread || 0]?.id || props.book.spreads[0].id)
 const discovered = ref<string[]>([...(props.book.progress.discovered_hotspots || [])])
-const selectedOption = ref(props.book.progress.choice?.option_id || '')
+const route = ref(props.book.progress.route)
 const note = ref(props.book.progress.note || '')
 const qaHistory = ref([...(props.book.progress.qa_history || [])])
 const soundEnabled = ref(Boolean(props.book.progress.sound_enabled))
@@ -125,6 +136,9 @@ const completed = ref(Boolean(props.book.progress.completed))
 const report = ref('')
 const asking = ref(false)
 const completing = ref(false)
+const choosing = ref(false)
+const navigating = ref(false)
+const routeHint = ref('')
 const drawerOpen = ref(false)
 const dragging = ref(false)
 const dragStartX = ref(0)
@@ -137,8 +151,14 @@ let innerAudio: any = null
 let noteTimer: ReturnType<typeof setTimeout> | undefined
 let destroyed = false
 
+const currentIndex = computed(() => Math.max(0, props.book.spreads.findIndex(item => item.id === currentSpreadId.value)))
 const currentSpread = computed(() => props.book.spreads[currentIndex.value])
-const progressPercent = computed(() => Math.round((currentIndex.value + 1) / props.book.spreads.length * 100))
+const selectedOption = computed(() => route.value.decisions[currentSpreadId.value] || '')
+const unlockedSpreads = computed(() => props.book.spreads.filter(item => route.value.unlocked_spread_ids.includes(item.id)))
+const canGoBack = computed(() => route.value.visited_spread_ids.length > 1)
+const missingDecisionClues = computed(() => (currentSpread.value.scene.required_clues || []).filter(id => !discovered.value.includes(id)))
+const decisionLocked = computed(() => currentSpread.value.type === 'decision' && missingDecisionClues.value.length > 0)
+const canAdvance = computed(() => currentSpread.value.type !== 'ending' && currentSpread.value.type !== 'decision')
 const bookTransform = computed(() => ({ '--drag-angle': `${Math.max(-12, Math.min(12, dragDelta.value / 24))}deg` }))
 
 onMounted(() => {
@@ -156,25 +176,44 @@ onBeforeUnmount(() => {
   stopSpeech()
 })
 
-watch(currentIndex, (index) => {
-  furthestIndex.value = Math.max(furthestIndex.value, index)
-  persist({ current_spread: index })
+watch(currentSpreadId, () => {
+  const index = currentIndex.value
   preloadAround(index)
   playCurrentAudio()
 })
 
-function next() { turnTo(currentIndex.value + 1, 'next') }
-function previous() { turnTo(currentIndex.value - 1, 'prev') }
-function jumpTo(index: number) { drawerOpen.value = false; turnTo(index, index >= currentIndex.value ? 'next' : 'prev') }
-function turnTo(index: number, direction: 'next' | 'prev') {
-  if (turning.value || index < 0 || index >= props.book.spreads.length || index === currentIndex.value) return
+function applyProgress(value: ImmersiveBook['progress'], syncCurrent = true) {
+  route.value = value.route
+  discovered.value = [...value.discovered_hotspots]
+  if (syncCurrent && value.current_spread_id) currentSpreadId.value = value.current_spread_id
+  emit('progress', value)
+}
+function animateTo(targetId: string, direction: 'next' | 'prev') {
+  if (turning.value || targetId === currentSpreadId.value) return
   stopSpeech()
   turnDirection.value = direction
-  if (reduceMotion.value) { currentIndex.value = index; turnDirection.value = ''; return }
+  if (reduceMotion.value) { currentSpreadId.value = targetId; turnDirection.value = ''; return }
   turning.value = true
-  setTimeout(() => { currentIndex.value = index }, 180)
+  setTimeout(() => { currentSpreadId.value = targetId }, 180)
   setTimeout(() => { turning.value = false; turnDirection.value = '' }, 520)
 }
+async function navigate(direction: 'next' | 'back' | 'jump', target?: string) {
+  if (navigating.value || turning.value) return
+  navigating.value = true
+  try {
+    const result = await immersiveApi.advance(props.book.id, { from_spread_id: currentSpreadId.value, direction, target_spread_id: target })
+    const before = currentSpreadId.value
+    const oldIndex = currentIndex.value
+    applyProgress(result.progress, false)
+    animateTo(result.spread.id, direction === 'back' ? 'prev' : result.spread.order_index >= oldIndex ? 'next' : 'prev')
+    if (before !== result.spread.id) routeHint.value = ''
+  } catch (error: any) {
+    uni.showToast({ title: error.message || '暂时无法继续', icon: 'none' })
+  } finally { navigating.value = false }
+}
+function next() { if (canAdvance.value) navigate('next') }
+function previous() { if (canGoBack.value) navigate('back') }
+function jumpTo(spreadId: string) { drawerOpen.value = false; if (spreadId !== currentSpreadId.value) navigate('jump', spreadId) }
 
 function onPointerDown(event: PointerEvent) {
   const target = event.target as HTMLElement
@@ -190,14 +229,17 @@ function onPointerUp() {
   dragging.value = false; dragDelta.value = 0
 }
 function onPointerCancel() { dragging.value = false; dragDelta.value = 0 }
-function onSwiperChange(event: any) { currentIndex.value = Number(event.detail?.current || 0) }
+function onSwiperChange(event: any) {
+  const spread = props.book.spreads[Number(event.detail?.current || 0)]
+  if (spread?.id && spread.id !== currentSpreadId.value && route.value.unlocked_spread_ids.includes(spread.id)) jumpTo(spread.id)
+}
 
 async function persist(patch: ProgressPatch) {
   if (destroyed) return
   saveState.value = 'saving'
   try {
     const value = await immersiveApi.updateProgress(props.book.id, patch)
-    if (!destroyed) { saveState.value = 'idle'; emit('progress', value) }
+    if (!destroyed) { saveState.value = 'idle'; applyProgress(value) }
   } catch { if (!destroyed) saveState.value = 'error' }
 }
 
@@ -207,9 +249,22 @@ function discover(hotspot: SceneHotspot) {
     persist({ discovered_hotspot: hotspot.id })
   }
 }
-function choose(option: SceneOption) {
-  selectedOption.value = option.id
-  persist({ choice_spread_id: currentSpread.value.id, choice_option_id: option.id })
+async function choose(option: SceneOption) {
+  if (choosing.value) return
+  choosing.value = true
+  try {
+    const result = await immersiveApi.choose(props.book.id, {
+      decision_spread_id: currentSpreadId.value,
+      option_id: option.id,
+      submission_id: `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`,
+    })
+    applyProgress(result.progress, false)
+    routeHint.value = result.result === 'detour' ? result.hint : ''
+    animateTo(result.next_spread_id, 'next')
+    if (result.result === 'correct') uni.showToast({ title: '证据链成立，路线已解锁', icon: 'none' })
+  } catch (error: any) {
+    uni.showToast({ title: error.message || '路线选择未保存', icon: 'none' })
+  } finally { choosing.value = false }
 }
 function updateNote(value: string) {
   note.value = value
@@ -228,7 +283,7 @@ async function ask(question: string) {
 }
 async function complete() {
   if (completing.value || completed.value) return
-  if (noteTimer) { clearTimeout(noteTimer); await persist({ note: note.value, current_spread: currentIndex.value }) }
+  if (noteTimer) { clearTimeout(noteTimer); await persist({ note: note.value }) }
   completing.value = true
   try {
     const result = await immersiveApi.complete(props.book.id)
@@ -278,7 +333,7 @@ function preloadAround(index: number) {
   // #endif
 }
 function exitReader() {
-  if (noteTimer) { clearTimeout(noteTimer); persist({ note: note.value, current_spread: currentIndex.value }) }
+  if (noteTimer) { clearTimeout(noteTimer); persist({ note: note.value }) }
   stopAudio(); stopSpeech(); uni.navigateBack()
 }
 </script>
@@ -299,15 +354,23 @@ function exitReader() {
 .book-page { position:absolute; z-index:3; inset:0; overflow:hidden; background:#17140f; transform-origin:center; transform-style:preserve-3d; backface-visibility:hidden; }.book-page::after { content:''; position:absolute; z-index:20; inset:0; pointer-events:none; opacity:0; background:linear-gradient(90deg,transparent 35%,rgba(0,0,0,.7)); }
 .is-turning .book-page.turn-next { animation:pageNext .52s cubic-bezier(.65,0,.25,1); }.is-turning .book-page.turn-prev { animation:pagePrev .52s cubic-bezier(.65,0,.25,1); }.page-gloss { position:absolute; z-index:19; inset:0; pointer-events:none; background:linear-gradient(105deg,transparent 38%,rgba(255,255,255,.08) 49%,transparent 59%); mix-blend-mode:screen; }
 .edge { position:absolute; z-index:25; top:10%; bottom:10%; width:7%; color:rgba(250,232,192,.42); opacity:.25; transition:opacity .2s,background .2s; }.edge:hover { opacity:1; background:linear-gradient(90deg,rgba(210,168,88,.07),transparent); }.edge span { font:54px/1 var(--font-display); text-shadow:0 3px 13px #000; }.edge--prev { left:0; }.edge--next { right:0; }.edge--next:hover { background:linear-gradient(-90deg,rgba(210,168,88,.07),transparent); }
-.reader-footer { position:absolute; z-index:40; left:0; right:0; bottom:0; height:var(--footer-height); display:grid; grid-template-columns:100px minmax(180px,440px) 100px; justify-content:center; align-items:center; gap:28px; border-top:1px solid rgba(241,220,174,.1); background:rgba(8,10,9,.77); backdrop-filter:blur(12px); }.reader-footer>button { color:rgba(255,241,211,.57); font-size:11px; letter-spacing:2px; }.reader-footer>button:disabled { opacity:.18; }.reader-progress { display:flex; align-items:center; gap:16px; }.reader-progress>span { width:54px; color:rgba(255,241,211,.48); font:10px var(--font-body); }.reader-progress>span b { color:#dfbd75; font-size:14px; }.reader-progress>i { flex:1; height:1px; background:rgba(255,255,255,.15); }.reader-progress>i em { display:block; height:100%; background:#d1a855; box-shadow:0 0 12px #b88e3e; transition:width .4s; }
+.reader-footer { position:absolute; z-index:40; left:0; right:0; bottom:0; height:var(--footer-height); display:grid; grid-template-columns:100px minmax(180px,440px) 100px; justify-content:center; align-items:center; gap:28px; border-top:1px solid rgba(241,220,174,.1); background:rgba(8,10,9,.77); backdrop-filter:blur(12px); }.reader-footer>button { color:rgba(255,241,211,.57); font-size:11px; letter-spacing:2px; }.reader-footer>button:disabled { opacity:.18; }
+.route-progress { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }.route-progress>div { display:flex; align-items:center; justify-content:center; gap:6px; padding:5px 8px; border-bottom:1px solid rgba(255,255,255,.14); color:rgba(255,241,211,.42); font-size:10px; letter-spacing:1px; }.route-progress i { display:grid; place-items:center; width:15px; height:15px; border:1px solid rgba(218,181,103,.3); border-radius:50%; color:#b99550; font:9px var(--font-body); }.route-progress .active { color:#edcf91; border-color:#c39b4d; }.route-progress .solved { color:#d5e3bf; border-color:rgba(164,197,139,.55); }.route-progress .solved i { color:#d5e3bf; border-color:#8da875; }
 .contents-drawer { position:absolute; z-index:80; inset:0; display:flex; justify-content:flex-end; background:rgba(4,5,4,.62); backdrop-filter:blur(4px); }.contents-drawer>div { width:min(400px,90vw); height:100%; overflow:auto; box-sizing:border-box; padding:35px 31px; color:#34271c; background:#e7d8b9; box-shadow:-25px 0 70px rgba(0,0,0,.44); }.contents-drawer header { position:relative; padding-bottom:24px; border-bottom:1px solid rgba(83,58,32,.2); }.contents-drawer header span { color:#987039; font-size:9px; letter-spacing:5px; }.contents-drawer header h2 { margin:6px 0 0; font:700 28px var(--font-display); }.contents-drawer header>button { position:absolute; right:0; top:-8px; color:#7e2d26; font-size:31px; }.contents-drawer>div>button { width:100%; display:grid; grid-template-columns:38px 1fr 18px; align-items:center; gap:12px; padding:15px 3px; border-bottom:1px solid rgba(83,58,32,.12); color:#7e6d59; text-align:left; }.contents-drawer>div>button>b { font:700 13px var(--font-display); color:#a58a60; }.contents-drawer>div>button span strong,.contents-drawer>div>button span small { display:block; }.contents-drawer>div>button span strong { color:#3e3022; font:700 14px var(--font-display); }.contents-drawer>div>button span small { margin-top:2px; font-size:11px; }.contents-drawer>div>button i { color:#b6a283; font-style:normal; }.contents-drawer>div>button.active { color:#7b2a23; background:rgba(122,43,36,.06); }.contents-drawer>div>button.active b,.contents-drawer>div>button.active i { color:#7b2a23; }.contents-drawer>div>footer { display:flex; justify-content:space-between; align-items:center; margin-top:26px; font-size:11px; color:#76634d; }.contents-drawer>div>footer button { padding:10px 13px; color:#f6ead1; background:#752b25; }
 .save-toast { position:absolute; z-index:90; left:50%; bottom:70px; transform:translateX(-50%); padding:9px 16px; color:#f5e8cf; background:#7d2b25; box-shadow:0 7px 25px rgba(0,0,0,.25); font-size:11px; }
 .drawer-enter-active,.drawer-leave-active { transition:opacity .25s; }.drawer-enter-active>div,.drawer-leave-active>div { transition:transform .35s cubic-bezier(.2,.8,.2,1); }.drawer-enter-from,.drawer-leave-to { opacity:0; }.drawer-enter-from>div,.drawer-leave-to>div { transform:translateX(100%); }
 .mp-book { position:absolute; top:var(--toolbar-height); bottom:var(--footer-height); left:0; right:0; height:auto; }
 @keyframes pageNext { 0%{transform:perspective(1800px) rotateY(0);filter:brightness(1)} 48%{transform:perspective(1800px) rotateY(-12deg) scale(.985);filter:brightness(.55)} 51%{opacity:.3} 52%{transform:perspective(1800px) rotateY(10deg);opacity:.3} 100%{transform:perspective(1800px) rotateY(0);opacity:1;filter:brightness(1)} }
 @keyframes pagePrev { 0%{transform:perspective(1800px) rotateY(0);filter:brightness(1)} 48%{transform:perspective(1800px) rotateY(12deg) scale(.985);filter:brightness(.55)} 51%{opacity:.3} 52%{transform:perspective(1800px) rotateY(-10deg);opacity:.3} 100%{transform:perspective(1800px) rotateY(0);opacity:1;filter:brightness(1)} }
-@media (max-width:700px) {
-  .reader { --toolbar-height:58px; --footer-height:52px; }.reader-toolbar { grid-template-columns:64px 1fr 112px; padding:0 12px; }.reader-toolbar__identity span { display:none; }.reader-toolbar__identity b { font-size:14px; letter-spacing:2px; }.reader-toolbar__actions { gap:5px; }.tool { gap:0; }.tool span { width:26px;height:26px; }.tool b { display:none; }.tool--exit b { display:block;margin-left:6px; }.book-stage { align-items:center; }.book-shell { width:100vw; height:calc(100vh - var(--toolbar-height) - var(--footer-height)); max-height:none; aspect-ratio:auto; box-shadow:none; }.book-shell__spine,.page-under { display:none; }.edge { width:12%; }.edge span { font-size:40px; }.reader-footer { grid-template-columns:62px minmax(145px,1fr) 62px; gap:10px; padding:0 14px; }.reader-footer>button { font-size:10px; }.reader-progress { gap:9px; }.reader-progress>span { width:47px; }.book-shadow { display:none; }
+/* #ifndef H5 */
+@media (max-width: 700px) {
+  .reader { --toolbar-height:58px; --footer-height:52px; }.reader-toolbar { grid-template-columns:64px 1fr 112px; padding:0 12px; }.reader-toolbar__identity span { display:none; }.reader-toolbar__identity b { font-size:14px; letter-spacing:2px; }.reader-toolbar__actions { gap:5px; }.tool { gap:0; }.tool span { width:26px;height:26px; }.tool b { display:none; }.tool--exit b { display:block;margin-left:6px; }.book-stage { align-items:center; }.book-shell { width:100vw; height:calc(100vh - var(--toolbar-height) - var(--footer-height)); max-height:none; aspect-ratio:auto; box-shadow:none; }.book-shell__spine,.page-under { display:none; }.edge { width:12%; }.edge span { font-size:40px; }.reader-footer { grid-template-columns:62px minmax(145px,1fr) 62px; gap:8px; padding:0 10px; }.reader-footer>button { font-size:9px; }.route-progress { gap:3px; }.route-progress>div { gap:3px; padding:4px 2px; font-size:8px; letter-spacing:0; }.route-progress i { width:12px; height:12px; font-size:7px; }.book-shadow { display:none; }
 }
+/* #endif */
+/* #ifdef H5 */
+@container (max-width: 700px) {
+  .reader { --toolbar-height:58px; --footer-height:52px; }.reader-toolbar { grid-template-columns:64px 1fr 112px; padding:0 12px; }.reader-toolbar__identity span { display:none; }.reader-toolbar__identity b { font-size:14px; letter-spacing:2px; }.reader-toolbar__actions { gap:5px; }.tool { gap:0; }.tool span { width:26px;height:26px; }.tool b { display:none; }.tool--exit b { display:block;margin-left:6px; }.book-stage { align-items:center; }.book-shell { width:100vw; height:calc(100vh - var(--toolbar-height) - var(--footer-height)); max-height:none; aspect-ratio:auto; box-shadow:none; }.book-shell__spine,.page-under { display:none; }.edge { width:12%; }.edge span { font-size:40px; }.reader-footer { grid-template-columns:62px minmax(145px,1fr) 62px; gap:8px; padding:0 10px; }.reader-footer>button { font-size:9px; }.route-progress { gap:3px; }.route-progress>div { gap:3px; padding:4px 2px; font-size:8px; letter-spacing:0; }.route-progress i { width:12px; height:12px; font-size:7px; }.book-shadow { display:none; }
+}
+/* #endif */
 @media (prefers-reduced-motion:reduce) { .book-shell,.book-page,.contents-drawer>div { transition:none!important; animation:none!important; } }
 </style>

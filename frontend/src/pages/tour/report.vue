@@ -22,7 +22,7 @@
 
       <section v-else-if="reportError" class="report-error">
         <span>生成未完成</span><h2>{{ reportError }}</h2><p>本次不会产生虚假积分或空报告，你可以保留手记后重新尝试。</p>
-        <button @click="generate">重新生成</button>
+        <button @click="loadReport">{{ viewOnly ? '重新读取' : '重新生成' }}</button>
       </section>
 
       <template v-else>
@@ -61,6 +61,7 @@ const loading = ref(true)
 const reportError = ref('')
 const recordId = ref('')
 const fieldNote = ref('')
+const viewOnly = ref(false)
 const now = new Date()
 const today = now.toLocaleDateString('zh-CN', { year: 'numeric', month: 'long', day: 'numeric' })
 const todayShort = `${now.getFullYear()}.${String(now.getMonth() + 1).padStart(2, '0')}.${String(now.getDate()).padStart(2, '0')}`
@@ -70,19 +71,26 @@ onLoad((query: any) => {
   siteId.value = query.siteId || '1'
   siteName.value = decodeURIComponent(query.siteName || '红色景点')
   recordId.value = query.recordId || ''
-  fieldNote.value = uni.getStorageSync(`tour_note_${recordId.value}`) || ''
-  generate()
+  viewOnly.value = query.view === '1'
+  loadReport()
 })
 
-async function generate() {
+async function loadReport() {
   if (!recordId.value) { loading.value = false; reportError.value = '研学记录尚未建立'; return }
   loading.value = true; reportError.value = ''
   try {
-    const notes = fieldNote.value ? [`研学手记：${fieldNote.value}`] : []
-    const res = await tourApi.generateReport(siteId.value, notes, recordId.value)
+    if (viewOnly.value) {
+      const session = await tourApi.getSession(recordId.value)
+      if (!session?.completed || !session.report?.trim()) throw new Error('这份研学记录尚未形成正式报告')
+      reportText.value = session.report
+      fieldNote.value = session.note || ''
+      return
+    }
+    // 手记由后端从沉浸式进度中读取并一并喂给 AI，前端无需再上传。
+    fieldNote.value = ''
+    const res = await tourApi.generateReport(siteId.value, [], recordId.value)
     if (!res?.report?.trim()) throw new Error('AI 未返回有效报告')
     reportText.value = res.report
-    uni.removeStorageSync(`tour_note_${recordId.value}`)
   } catch (error: any) { reportError.value = error.message || '报告生成失败，请稍后重试' }
   finally { loading.value = false }
 }

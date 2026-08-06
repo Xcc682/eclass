@@ -1,26 +1,545 @@
 <template>
-  <div class="reports">
-    <header class="reports-hero"><span>REPORT ARCHIVE · {{ String(reports.length).padStart(2,'0') }}</span><h1>我的学习报告</h1><p>谈话、辩论与研学的结果都在这里归档。报告是复盘依据，不只是一个分数。</p></header>
+  <view class="reports">
+    <header class="reports-hero">
+      <view class="reports-hero__folio"
+        ><span>FORMAL REPORT ARCHIVE</span
+        ><span
+          >{{ String(currentReports.length).padStart(2, "0") }} 份有效报告</span
+        ></view
+      >
+      <view class="reports-hero__body"
+        ><view
+          ><p>个人学习评估 · 正式归档</p>
+          <h1>我的报告</h1>
+          <text
+            >这里只保存谈话、辩论与研学形成的正式报告，打开后回到原模块完整复盘。</text
+          ></view
+        ><view class="reports-hero__seal"
+          ><strong>档</strong><small>有效报告</small></view
+        ></view
+      >
+    </header>
+
     <main class="reports__main">
-      <div class="reports__heading"><div><span>ARCHIVED FILES</span><h2>全部报告</h2></div><p>共 {{ reports.length }} 份</p></div>
-      <EmptyState v-if="!loading&&!reports.length" title="暂无学习报告" description="完成一次有效训练后，报告会自动保存到这里" />
-      <div v-if="loading" class="reports__state">正在调阅报告档案…</div>
-      <section v-else class="reports__list"><article v-for="(report,index) in reports" :key="report.id" @click="viewReport(report)"><div class="report-file__index">{{ String(index+1).padStart(2,'0') }}</div><div class="report-file__body"><div class="report-file__meta"><span>{{ typeLabel[report.type]||report.type }}报告</span><span>{{ formatDate(report.date) }}</span></div><h3>{{ report.title }}</h3><p>{{ report.data?.suggestion || report.data?.report || '打开报告查看完整内容与评估建议。' }}</p><div class="report-file__footer"><span>{{ report.data?.overall_score ? `综合评估 ${report.data.overall_score} 分` : '内容型报告' }}</span><b>打开档案 →</b></div></div></article></section>
+      <view class="reports__tabs">
+        <button
+          :class="{ active: scope === 'current' }"
+          @click="scope = 'current'"
+        >
+          有效报告 <span>{{ currentReports.length }}</span>
+        </button>
+        <button
+          :class="{ active: scope === 'legacy' }"
+          @click="scope = 'legacy'"
+        >
+          旧版档案 <span>{{ legacyReports.length }}</span>
+        </button>
+      </view>
+      <p v-if="scope === 'legacy'" class="reports__notice">
+        旧版报告保留原始内容供回看，不计入当前有效报告、能力画像和成长趋势。
+      </p>
+
+      <view v-if="loading" class="reports__state"
+        ><i>阅</i><strong>正在调阅正式报告</strong></view
+      >
+      <view v-else-if="error" class="reports__state reports__state--error"
+        ><strong>报告加载失败</strong>
+        <p>{{ error }}</p>
+        <button @click="loadReports">重新加载</button></view
+      >
+      <EmptyState
+        v-else-if="!visibleReports.length"
+        :title="scope === 'legacy' ? '暂无旧版档案' : '暂无有效报告'"
+        :description="
+          scope === 'legacy'
+            ? '旧版流程报告会集中保存在这里。'
+            : '完成一次完整谈话、辩论或研学后，正式报告会自动归档。'
+        "
+      />
+
+      <section v-else class="reports__list">
+        <article
+          v-for="(report, index) in visibleReports"
+          :key="report.id"
+          @click="openReport(report)"
+        >
+          <view class="report-file__rail"
+            ><span>{{ String(index + 1).padStart(2, "0") }}</span
+            ><i></i
+          ></view>
+          <view class="report-file__body">
+            <view class="report-file__meta"
+              ><span>{{ typeLabel[report.type] }}报告</span
+              ><span>{{ formatDate(report.created_at) }}</span></view
+            >
+            <view class="report-file__headline"
+              ><view
+                ><h2>{{ report.title }}</h2>
+                <p>{{ preview(report) }}</p></view
+              ><view v-if="report.score !== null" class="report-file__score"
+                ><strong>{{ report.score }}</strong
+                ><small>分</small></view
+              ><view v-else class="report-file__stamp">{{
+                typeMark[report.type]
+              }}</view></view
+            >
+            <footer>
+              <span>{{
+                report.is_legacy
+                  ? "旧版流程 · 仅供回看"
+                  : "正式归档 · 可追溯原训练"
+              }}</span
+              ><b>查看完整报告 →</b>
+            </footer>
+          </view>
+        </article>
+      </section>
     </main>
-    <div class="reports__detail" v-if="detail" @click="detail=null"><section @click.stop><div class="reports__detail-handle"></div><header><span>{{ typeLabel[detail.type]||detail.type }} · REPORT</span><button @click="detail=null">关闭</button></header><h2>{{ detail.title }}</h2><p class="reports__detail-date">{{ formatDate(detail.date) }}</p><div v-if="detail.data?.overall_score" class="reports__detail-score"><strong>{{ detail.data.overall_score }}</strong><span>综合得分<br/>{{ detail.data.grade }}</span></div><div v-if="detail.data?.dimension_scores" class="reports__detail-dims"><div v-for="(value,key) in detail.data.dimension_scores" :key="key"><span>{{ key }}</span><strong>{{ value }}</strong></div></div><p v-if="detail.data?.report" class="reports__detail-text">{{ detail.data.report }}</p><p v-if="detail.data?.suggestion" class="reports__detail-text">{{ detail.data.suggestion }}</p><div v-if="detail.data?.strengths?.length" class="reports__detail-tags"><span v-for="item in detail.data.strengths" :key="item">{{ item }}</span></div></section></div>
-  </div>
+  </view>
 </template>
 
 <script setup lang="ts">
-import { onMounted,ref } from 'vue'
-import EmptyState from '@/components/common/EmptyState.vue'
-import { userApi } from '@/api/user'
-const reports=ref<any[]>([]),detail=ref<any>(null),loading=ref(true)
-const typeLabel:Record<string,string>={interview:'谈话',debate:'辩论',tour:'研学'}
-onMounted(async()=>{try{const rows:any[]=await userApi.getReports() as any[];reports.value=rows.map(row=>({id:row.id,type:row.type,title:row.title,date:row.created_at,data:typeof row.content==='string'?JSON.parse(row.content):row.content}))}catch{uni.showToast({title:'报告加载失败，请稍后重试',icon:'none'})}finally{loading.value=false}})
-function formatDate(value:string){return new Date(value).toLocaleDateString('zh-CN',{year:'numeric',month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})}function viewReport(report:any){detail.value=report}
+import { computed, onMounted, ref } from "vue";
+import EmptyState from "@/components/common/EmptyState.vue";
+import { userApi, type FormalReportItem } from "@/api/user";
+
+const currentReports = ref<FormalReportItem[]>([]);
+const legacyReports = ref<FormalReportItem[]>([]);
+const scope = ref<"current" | "legacy">("current");
+const loading = ref(true);
+const error = ref("");
+const visibleReports = computed(() =>
+  scope.value === "current" ? currentReports.value : legacyReports.value,
+);
+const typeLabel: Record<FormalReportItem["type"], string> = {
+  interview: "谈话",
+  debate: "辩论",
+  tour: "研学",
+};
+const typeMark: Record<FormalReportItem["type"], string> = {
+  interview: "谈",
+  debate: "辩",
+  tour: "行",
+};
+
+onMounted(loadReports);
+
+async function loadReports() {
+  loading.value = true;
+  error.value = "";
+  try {
+    [currentReports.value, legacyReports.value] = await Promise.all([
+      userApi.getReports("current"),
+      userApi.getReports("legacy"),
+    ]);
+  } catch (event: any) {
+    error.value = event.message || "正式报告暂时无法读取";
+  } finally {
+    loading.value = false;
+  }
+}
+function content(report: FormalReportItem): Record<string, any> {
+  if (typeof report.content !== "string")
+    return report.content as Record<string, any>;
+  try {
+    return JSON.parse(report.content);
+  } catch {
+    return {};
+  }
+}
+function preview(report: FormalReportItem) {
+  const data = content(report);
+  return (
+    data.suggestion ||
+    data.report ||
+    data.summary ||
+    "打开原模块，查看完整评估、能力分析与复盘建议。"
+  );
+}
+function formatDate(value: string) {
+  return new Date(value).toLocaleDateString("zh-CN", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+}
+function encoded(value?: string | null) {
+  return encodeURIComponent(value || "");
+}
+function openReport(report: FormalReportItem) {
+  const context = report.context || {};
+  if (
+    report.type === "interview" &&
+    (context.practice_id || report.source_record_id)
+  ) {
+    return go(
+      `/pages/interview/report?practiceId=${context.practice_id || report.source_record_id}`,
+    );
+  }
+  if (
+    report.type === "debate" &&
+    (context.session_id || report.source_record_id)
+  ) {
+    return go(
+      `/pages/debate/feedback?sessionId=${context.session_id || report.source_record_id}&topicId=${context.topic_id || ""}&topic=${encoded(context.topic_title || report.title)}&stance=${context.stance || "pro"}&mode=${context.mode || "quick"}`,
+    );
+  }
+  if (
+    report.type === "tour" &&
+    (context.record_id || report.source_record_id)
+  ) {
+    return go(
+      `/pages/tour/report?recordId=${context.record_id || report.source_record_id}&siteId=${context.site_id || ""}&siteName=${encoded(context.site_name || report.title)}&view=1`,
+    );
+  }
+  uni.showToast({ title: "原训练记录不存在，暂时无法打开", icon: "none" });
+}
+function go(url: string) {
+  uni.navigateTo({ url });
+}
 </script>
 
 <style scoped>
-.reports{min-height:100vh;padding-bottom:60rpx;background:var(--color-bg)}.reports-hero{padding:50rpx var(--page-gutter) 40rpx;color:#fff9ed;background:#431a18}.reports-hero>span{font-size:16rpx;letter-spacing:4rpx;color:#e7c981}.reports-hero h1{margin:34rpx 0 10rpx;font:700 43rpx var(--font-display)}.reports-hero p{width:84%;margin:0;font-size:20rpx;line-height:1.65;color:rgba(255,249,237,.57)}.reports__main{padding:0 var(--page-gutter)}.reports__heading{display:flex;justify-content:space-between;align-items:end;margin:35rpx 0 23rpx;padding-bottom:17rpx;border-bottom:1px solid rgba(72,25,22,.15)}.reports__heading span{font-size:15rpx;letter-spacing:4rpx;color:var(--color-gold)}.reports__heading h2{margin:5rpx 0 0;font:700 32rpx var(--font-display);color:var(--color-text)}.reports__heading p{margin:0;font-size:18rpx;color:var(--color-text-muted)}.reports__state{padding:70rpx;text-align:center;color:var(--color-text-muted)}.reports__list article{display:grid;grid-template-columns:53rpx 1fr;margin-bottom:19rpx;background:var(--color-card);border:1px solid rgba(72,25,22,.11);box-shadow:0 7rpx 22rpx rgba(48,32,22,.05)}.report-file__index{padding-top:25rpx;text-align:center;border-right:1px solid rgba(72,25,22,.1);font:700 18rpx var(--font-display);color:var(--color-primary)}.report-file__body{padding:23rpx 23rpx 18rpx}.report-file__meta{display:flex;justify-content:space-between;font-size:15rpx;letter-spacing:2rpx;color:var(--color-gold)}.report-file__meta span:last-child{letter-spacing:0;color:var(--color-text-muted)}.report-file__body h3{margin:10rpx 0 7rpx;font:700 27rpx var(--font-display);color:var(--color-text)}.report-file__body>p{display:-webkit-box;overflow:hidden;-webkit-line-clamp:2;-webkit-box-orient:vertical;margin:0;font-size:19rpx;line-height:1.55;color:var(--color-text-muted)}.report-file__footer{display:flex;justify-content:space-between;margin-top:16rpx;padding-top:13rpx;border-top:1px solid rgba(72,25,22,.08);font-size:16rpx;color:var(--color-text-muted)}.report-file__footer b{color:var(--color-primary);font-weight:500}.reports__detail{position:fixed;inset:0;z-index:2200;display:flex;align-items:flex-end;justify-content:center;padding:24rpx;background:rgba(30,20,16,.58);backdrop-filter:blur(4rpx);box-sizing:border-box}.reports__detail>section{width:min(720rpx,100%);max-height:82vh;overflow-y:auto;padding:22rpx 31rpx 34rpx;box-sizing:border-box;background:#fffaf0;border:1px solid rgba(72,25,22,.15);box-shadow:0 25rpx 70rpx rgba(28,18,12,.28)}.reports__detail-handle{width:65rpx;height:5rpx;margin:0 auto 22rpx;background:rgba(72,25,22,.18)}.reports__detail header{display:flex;justify-content:space-between;font-size:16rpx;letter-spacing:3rpx;color:var(--color-gold)}.reports__detail header button{margin:0;padding:0;background:transparent;color:var(--color-text-muted);font-size:17rpx;line-height:1.2}.reports__detail h2{margin:25rpx 0 7rpx;font:700 34rpx var(--font-display);color:var(--color-text)}.reports__detail-date{margin:0;color:var(--color-text-muted);font-size:17rpx}.reports__detail-score{display:flex;align-items:center;gap:16rpx;margin:25rpx 0;padding:20rpx;border-top:1px solid rgba(72,25,22,.1);border-bottom:1px solid rgba(72,25,22,.1)}.reports__detail-score strong{font:700 54rpx var(--font-display);color:var(--color-primary)}.reports__detail-score span{font-size:18rpx;line-height:1.5;color:var(--color-text-muted)}.reports__detail-dims{display:grid;grid-template-columns:repeat(3,1fr);gap:10rpx;margin-bottom:18rpx}.reports__detail-dims div{padding:13rpx;text-align:center;background:rgba(127,33,29,.04)}.reports__detail-dims span,.reports__detail-dims strong{display:block}.reports__detail-dims span{font-size:15rpx;color:var(--color-text-muted)}.reports__detail-dims strong{font:700 22rpx var(--font-display);color:var(--color-primary)}.reports__detail-text{white-space:pre-wrap;font:22rpx/1.75 var(--font-display);color:var(--color-text-secondary)}.reports__detail-tags{display:flex;flex-wrap:wrap;gap:9rpx}.reports__detail-tags span{padding:7rpx 12rpx;background:rgba(49,91,73,.08);color:var(--color-green);font-size:17rpx}
+view {
+  display: block;
+}
+.reports {
+  min-height: 100vh;
+  padding-bottom: 70rpx;
+  background: #eee7dc;
+  color: #392d27;
+}
+.reports-hero {
+  position: relative;
+  overflow: hidden;
+  padding: 32rpx var(--page-gutter) 34rpx;
+  color: #fff8e9;
+  background: #431a18;
+}
+.reports-hero:after {
+  content: "REPORT";
+  position: absolute;
+  right: -40rpx;
+  bottom: -18rpx;
+  color: rgba(255, 255, 255, 0.035);
+  font:
+    italic 100rpx Georgia,
+    serif;
+  pointer-events: none;
+}
+.reports-hero__folio {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 17rpx;
+  border-bottom: 1px solid rgba(231, 201, 129, 0.28);
+  font-size: 14rpx;
+  letter-spacing: 3rpx;
+  color: #e7c981;
+}
+.reports-hero__body {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 28rpx;
+  padding-top: 31rpx;
+}
+.reports-hero__body p {
+  margin: 0;
+  color: #d8b96f;
+  font-size: 15rpx;
+  letter-spacing: 3rpx;
+}
+.reports-hero h1 {
+  margin: 7rpx 0 9rpx;
+  font: 700 var(--page-title-size) var(--font-display);
+}
+.reports-hero__body text {
+  display: block;
+  max-width: 650rpx;
+  font-size: 18rpx;
+  line-height: 1.65;
+  color: rgba(255, 248, 233, 0.58);
+}
+.reports-hero__seal {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  width: 116rpx;
+  height: 116rpx;
+  flex: none;
+  border: 5rpx double #d8b66e;
+  border-radius: 50%;
+  transform: rotate(-7deg);
+}
+.reports-hero__seal strong {
+  font: 700 34rpx var(--font-display);
+  color: #f0d38c;
+}
+.reports-hero__seal small {
+  font-size: 13rpx;
+  color: rgba(255, 248, 233, 0.64);
+}
+.reports__main {
+  max-width: 960px;
+  margin: auto;
+  padding: 27rpx var(--page-gutter);
+}
+.reports__tabs {
+  display: flex;
+  margin-bottom: 18rpx;
+  border-bottom: 1px solid #cbbba5;
+}
+.reports__tabs button {
+  position: relative;
+  margin: 0 26rpx 0 0;
+  padding: 14rpx 2rpx 16rpx;
+  border: 0;
+  background: transparent;
+  color: #7c6d60;
+  font-size: 18rpx;
+}
+.reports__tabs button:after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 4rpx;
+  background: transparent;
+}
+.reports__tabs button.active {
+  color: #73251f;
+  font-weight: 700;
+}
+.reports__tabs button.active:after {
+  background: #73251f;
+}
+.reports__tabs span {
+  margin-left: 6rpx;
+  color: #a3732e;
+  font:
+    15rpx Georgia,
+    serif;
+}
+.reports__notice {
+  margin: 0 0 19rpx;
+  padding: 14rpx 17rpx;
+  border-left: 4rpx solid #a97b36;
+  background: #f7efe1;
+  color: #7d6d5e;
+  font-size: 15rpx;
+  line-height: 1.55;
+}
+.reports__list {
+  display: grid;
+  gap: 17rpx;
+}
+.reports__list article {
+  display: grid;
+  grid-template-columns: 55rpx 1fr;
+  border: 1px solid #d7cbbb;
+  background: #fffaf0;
+  box-shadow: 0 10rpx 28rpx rgba(49, 34, 22, 0.055);
+  cursor: pointer;
+}
+.report-file__rail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 24rpx;
+  border-right: 1px solid #e0d5c6;
+  color: #7b2923;
+}
+.report-file__rail span {
+  font:
+    700 16rpx Georgia,
+    serif;
+}
+.report-file__rail i {
+  width: 1px;
+  flex: 1;
+  margin-top: 14rpx;
+  background: linear-gradient(#b7873e, transparent);
+}
+.report-file__body {
+  padding: 22rpx 23rpx 18rpx;
+}
+.report-file__meta {
+  display: flex;
+  justify-content: space-between;
+  color: #a47531;
+  font-size: 14rpx;
+  letter-spacing: 2rpx;
+}
+.report-file__meta span:last-child {
+  letter-spacing: 0;
+  color: #94877a;
+}
+.report-file__headline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18rpx;
+  margin-top: 11rpx;
+}
+.report-file__headline > view:first-child {
+  min-width: 0;
+}
+.report-file h2 {
+  margin: 0;
+  font: 700 28rpx/1.35 var(--font-display);
+}
+.report-file p {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  margin: 7rpx 0 0;
+  font-size: 17rpx;
+  line-height: 1.55;
+  color: #807267;
+}
+.report-file__score {
+  display: flex;
+  align-items: baseline;
+  flex: none;
+  color: #752720;
+}
+.report-file__score strong {
+  font:
+    700 45rpx Georgia,
+    serif;
+}
+.report-file__score small {
+  font-size: 14rpx;
+}
+.report-file__stamp {
+  display: grid;
+  place-items: center;
+  width: 64rpx;
+  height: 64rpx;
+  flex: none;
+  border: 3rpx double #7b2923;
+  border-radius: 50%;
+  font: 700 23rpx var(--font-display);
+  color: #7b2923;
+  transform: rotate(-6deg);
+}
+.report-file footer {
+  display: flex;
+  justify-content: space-between;
+  gap: 15rpx;
+  margin-top: 17rpx;
+  padding-top: 14rpx;
+  border-top: 1px solid #e9e0d3;
+  font-size: 14rpx;
+  color: #8a7b6e;
+}
+.report-file footer b {
+  flex: none;
+  color: #762722;
+}
+.reports__state {
+  display: grid;
+  place-items: center;
+  padding: 85rpx 20rpx;
+  color: #7c6e61;
+}
+.reports__state i {
+  display: grid;
+  place-items: center;
+  width: 70rpx;
+  height: 70rpx;
+  margin-bottom: 14rpx;
+  border: 4rpx double #7c2a24;
+  border-radius: 50%;
+  font: 700 24rpx var(--font-display);
+  color: #7c2a24;
+  animation: pulse 1.8s ease-in-out infinite;
+}
+.reports__state strong {
+  font: 700 23rpx var(--font-display);
+  color: #44362f;
+}
+.reports__state p {
+  margin: 8rpx 0;
+}
+.reports__state button {
+  margin-top: 16rpx;
+  padding: 13rpx 22rpx;
+  border-radius: 0;
+  background: #762722;
+  color: #fff;
+  font-size: 16rpx;
+}
+@keyframes pulse {
+  50% {
+    opacity: 0.45;
+    transform: scale(0.94);
+  }
+}
+/* #ifndef H5 */
+@media (min-width: 900px) {
+  .reports__list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .reports-hero__folio,
+  .reports-hero__body {
+    max-width: 960px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+/* #endif */
+/* #ifdef H5 */
+@container (min-width: 900px) {
+  .reports__list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .reports-hero__folio,
+  .reports-hero__body {
+    max-width: 960px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
+/* #endif */
+/* #ifndef H5 */
+@media (max-width: 420px) {
+  .reports-hero__seal {
+    width: 92rpx;
+    height: 92rpx;
+  }
+  .reports-hero h1 {
+    font-size: 40rpx;
+  }
+  .report-file footer {
+    align-items: flex-end;
+  }
+  .report-file footer span {
+    max-width: 58%;
+  }
+}
+/* #endif */
+/* #ifdef H5 */
+@container (max-width: 420px) {
+  .reports-hero__seal {
+    width: 92rpx;
+    height: 92rpx;
+  }
+  .reports-hero h1 {
+    font-size: 40rpx;
+  }
+  .report-file footer {
+    align-items: flex-end;
+  }
+  .report-file footer span {
+    max-width: 58%;
+  }
+}
+/* #endif */
 </style>

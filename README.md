@@ -22,7 +22,7 @@
 | **数据库** | SQLite (开发) / PostgreSQL + pgvector (生产) | 关系数据 + 向量检索 |
 | **向量检索** | pgvector + sentence-transformers (BAAI/bge-small-zh-v1.5) | RAG 语义搜索 |
 | **全文搜索** | SQLite FTS5 / PostgreSQL pg_trgm | 关键词混合检索 |
-| **AI 大模型** | DeepSeek API (deepseek-chat) | 对话、评分、生成 |
+| **AI 大模型** | DeepSeek API (deepseek-v4-flash) | 对话、评分、生成 |
 | **部署** | Docker Compose | 容器化一键部署 |
 
 ---
@@ -156,16 +156,20 @@ npm install
 npm run dev:h5
 ```
 
-### Docker 向量数据库
+### Docker 基础服务（默认不启动容器后端）
 
 ```bash
-# 启动 pgvector + Redis（Docker Desktop 需运行）
+# 启动 pgvector、Redis 与 MinIO（Docker Desktop 需运行）
+# FastAPI 仍按上面的命令在 Windows 本机运行，并读取 backend/dev.db。
 cd f:/eclass
 docker compose up -d
 
 # 验证
 docker ps
-# 应看到 eclass-db-1 (pgvector) 和 eclass-redis-1 (Redis) 在运行
+# 应看到 db、redis 和 minio；默认不应启动 eclass-backend-1。
+
+# 仅在明确测试完整容器部署时才启动容器后端：
+docker compose --profile container-backend up -d backend
 ```
 
 ### 小程序编译

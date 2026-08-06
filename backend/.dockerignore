@@ -1,0 +1,14 @@
+# Secrets and local runtime data must never be sent to the Docker daemon.
+.env
+.env.*
+!*.example
+__pycache__/
+*.py[cod]
+*.db
+*.sqlite*
+*.log
+storage/
+backups/
+.pytest_cache/
+.mypy_cache/
+tests/

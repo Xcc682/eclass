@@ -17,10 +17,20 @@ export const useUserStore = defineStore('user', () => {
 
   async function login(params: { phone: string; password: string }) {
     const result = await userApi.login(params)
+    saveSession(result)
+    return result
+  }
+
+  async function register(params: { phone: string; password: string }) {
+    const result = await userApi.register(params)
+    saveSession(result)
+    return result
+  }
+
+  function saveSession(result: { token: string; user: UserInfo }) {
     token.value = result.token
     user.value = result.user
     uni.setStorageSync('token', result.token)
-    return result
   }
 
   async function yibanLogin(params: { auth_code: string }) {
@@ -49,6 +59,6 @@ export const useUserStore = defineStore('user', () => {
 
   return {
     user, token, isLoggedIn, isTeacher,
-    fetchProfile, login, yibanLogin, logout, checkLogin
+    fetchProfile, login, register, yibanLogin, logout, checkLogin
   }
 })

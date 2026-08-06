@@ -11,6 +11,7 @@ from app.models.history import HistoryLearningRecord, HistoryScenario
 from app.models.user import User
 from app.security import get_current_user
 from app.services.ai_service import ai_service, validate_generated_text
+from app.services.point_service import award_points
 
 router = APIRouter(prefix="/api/v1/history", tags=["党史情景"])
 
@@ -97,7 +98,12 @@ def complete_scenario(scenario_id: str, user: User = Depends(get_current_user), 
         record.completed = True
         record.progress = 100
         record.completed_at = datetime.utcnow()
-        user.total_points += 2
+    award_points(
+        db, user,
+        module="history", event_type="scenario_completed", source_id=scenario_id,
+        points=2, description="完成党史情景学习",
+        metadata={"scenario_id": scenario_id, "record_id": record.id},
+    )
     return {"code": 0, "data": {"completed": True, "progress": 100}}
 
 

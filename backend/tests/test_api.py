@@ -11,7 +11,10 @@ from fastapi.testclient import TestClient
 from app.database import SessionLocal
 from app.main import app
 from app.models.user import User
-from app.services.ai_service import AIResponseValidationError, validate_debate_feedback, validate_interview_report
+from app.services.ai_service import (
+    AIResponseValidationError, validate_debate_feedback, validate_debate_turn,
+    validate_interview_report, validate_interview_turn,
+)
 
 
 class ApiAcceptanceTests(unittest.TestCase):
@@ -25,6 +28,10 @@ class ApiAcceptanceTests(unittest.TestCase):
         cls.client_context.__exit__(None, None, None)
 
     def login_headers(self, phone: str) -> dict[str, str]:
+        registered = self.client.post("/api/v1/auth/register", json={"phone": phone, "password": "test-password"})
+        self.assertIn(registered.status_code, (201, 409))
+        if registered.status_code == 201:
+            return {"Authorization": f"Bearer {registered.json()['data']['token']}"}
         login = self.client.post("/api/v1/auth/login", json={"phone": phone, "password": "test-password"})
         self.assertEqual(login.status_code, 200)
         return {"Authorization": f"Bearer {login.json()['data']['token']}"}
@@ -38,10 +45,25 @@ class ApiAcceptanceTests(unittest.TestCase):
 
     def test_02_auth_profile_and_role_guard(self):
         self.assertEqual(self.client.get("/api/v1/users/profile").status_code, 401)
+        unknown_phone = f"137{uuid.uuid4().int % 100_000_000:08d}"
+        unknown_login = self.client.post("/api/v1/auth/login", json={"phone": unknown_phone, "password": "test-password"})
+        self.assertEqual(unknown_login.status_code, 404)
+        self.assertEqual(unknown_login.json()["detail"], "账号不存在，请先注册")
+        register_phone = f"138{uuid.uuid4().int % 100_000_000:08d}"
+        registered = self.client.post("/api/v1/auth/register", json={"phone": register_phone, "password": "register-password"})
+        self.assertEqual(registered.status_code, 201, registered.text)
+        self.assertTrue(registered.json()["data"]["token"])
+        self.assertEqual(registered.json()["data"]["user"]["nickname"], f"同学{register_phone[-4:]}")
+        duplicate = self.client.post("/api/v1/auth/register", json={"phone": register_phone, "password": "register-password"})
+        self.assertEqual(duplicate.status_code, 409)
+        registered_login = self.client.post("/api/v1/auth/login", json={"phone": register_phone, "password": "register-password"})
+        self.assertEqual(registered_login.status_code, 200)
         phone = f"139{uuid.uuid4().int % 100_000_000:08d}"
         headers = self.login_headers(phone)
         profile = self.client.get("/api/v1/users/profile", headers=headers)
         self.assertEqual(profile.status_code, 200)
+        self.assertTrue(profile.json()["data"]["features"]["notifications_available"])
+        self.assertFalse(profile.json()["data"]["features"]["yiban_binding_available"])
         updated = self.client.put("/api/v1/users/profile", headers=headers, json={"nickname": "验收同学", "school": "测试大学"})
         self.assertEqual(updated.json()["data"]["nickname"], "验收同学")
         wrong = self.client.post("/api/v1/auth/login", json={"phone": phone, "password": "wrong-password"})
@@ -71,6 +93,16 @@ class ApiAcceptanceTests(unittest.TestCase):
         self.assertEqual(self.client.post("/api/v1/history/scenarios/1/complete", headers=headers).status_code, 200)
         after = self.client.get("/api/v1/users/profile", headers=headers).json()["data"]["total_points"]
         self.assertEqual(after - before, 2)
+        points = self.client.get("/api/v1/users/points", headers=headers).json()["data"]
+        self.assertEqual(points["by_module"]["history"], 2)
+        self.assertEqual(len([row for row in points["recent_transactions"] if row["module"] == "history"]), 1)
+        self.assertTrue(points["is_reconciled"])
+        growth = self.client.get("/api/v1/users/growth", headers=headers).json()["data"]
+        history_growth = next(row for row in growth["module_growth"] if row["key"] == "history")
+        self.assertEqual(history_growth["completed_count"], 1)
+        self.assertEqual(history_growth["points"], 2)
+        self.assertEqual(len(growth["ability_dimensions"]), 4)
+        self.assertGreaterEqual(growth["streak_days"], 1)
 
     def test_05_ai_failure_is_explicit_and_does_not_create_practice(self):
         headers = self.login_headers("13900000014")
@@ -86,16 +118,40 @@ class ApiAcceptanceTests(unittest.TestCase):
                   "思想认识": 88, "表达逻辑": 86, "入党动机": 90, "理论掌握": 84, "应变能力": 87},
                   "dimension_analysis": [{"name": "思想认识", "score": 88, "suggestion": "保持"}],
                   "strengths": ["表达清晰"], "weaknesses": [], "suggestion": "继续学习", "total_rounds": 2}
+        turn = {"question": "请继续", "comment": "回答具体", "finished": False, "phase": "模型随意返回的错误阶段",
+                "observations": {"表达逻辑": {"observed": True, "score": 86, "confidence": 0.8, "evidence": "表达清晰"}}}
         with patch("app.routers.interviews.ai_service.interview_start", new=AsyncMock(return_value={"question": "请介绍自己"})), \
-             patch("app.routers.interviews.ai_service.interview_respond", new=AsyncMock(return_value={"question": "请继续", "点评": "回答具体", "结束": False})), \
+             patch("app.routers.interviews.ai_service.interview_respond", new=AsyncMock(return_value=turn)), \
              patch("app.routers.interviews.ai_service.interview_report", new=AsyncMock(return_value=report)):
             started = self.client.post("/api/v1/interviews/practice/start", headers=headers, json={"scenario_id": "1"})
             self.assertEqual(started.status_code, 200)
             practice_id = started.json()["data"]["id"]
-            for answer in ("我是一名大学生", "我希望为同学服务"):
-                self.assertEqual(self.client.post(f"/api/v1/interviews/practice/{practice_id}/respond", headers=headers, json={"content": answer}).status_code, 200)
+            phases = []
+            early_end = self.client.post(f"/api/v1/interviews/practice/{practice_id}/end", headers=headers)
+            self.assertEqual(early_end.status_code, 400)
+            for index, answer in enumerate(("我是一名大学生", "我希望为同学服务", "我重视理论学习", "我会结合实践理解", "我会辨析信息来源", "我会坚持原则并沟通")):
+                submission_id = f"interview-turn-{index + 1}"
+                response = self.client.post(f"/api/v1/interviews/practice/{practice_id}/respond", headers=headers, json={"content": answer, "submission_id": submission_id})
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()["data"]["answered_count"], index + 1)
+                self.assertEqual(response.json()["data"]["user_message"]["round_number"], index + 1)
+                self.assertEqual(response.json()["data"]["ai_message"]["round_number"], index + 1)
+                if index == 0:
+                    duplicate = self.client.post(f"/api/v1/interviews/practice/{practice_id}/respond", headers=headers, json={"content": answer, "submission_id": submission_id})
+                    self.assertEqual(duplicate.status_code, 200)
+                    self.assertEqual(duplicate.json()["data"]["user_message"]["id"], response.json()["data"]["user_message"]["id"])
+                phases.append(response.json()["data"]["phase"])
+                live_score = response.json()["data"]["live_evaluation"]["dimensions"]["表达逻辑"]["score"]
+                if index == 0:
+                    self.assertIsNone(live_score)
+                if index == 1:
+                    self.assertEqual(live_score, 86)
+            self.assertEqual(phases, ["自我认知", "入党动机", "理论考察", "理论考察", "情景假设", "情景假设"])
+            self.assertEqual(response.json()["data"]["status"], "awaiting_report")
+            self.assertIsNone(response.json()["data"]["current_question_number"])
+            self.assertEqual(response.json()["data"]["live_evaluation"]["dimensions"]["表达逻辑"]["score"], 86)
             ended = self.client.post(f"/api/v1/interviews/practice/{practice_id}/end", headers=headers)
-            self.assertEqual(ended.json()["data"]["overall_score"], 88)
+            self.assertEqual(ended.json()["data"]["overall_score"], 87)
             self.assertEqual(self.client.get(f"/api/v1/interviews/practice/{practice_id}/report", headers=headers).status_code, 200)
 
     def test_07_debate_tour_and_template_report_persistence(self):
@@ -107,23 +163,60 @@ class ApiAcceptanceTests(unittest.TestCase):
         session_id = debate.json()["data"]["id"]
         with patch("app.routers.debates.ai_service.debate_argue", new=AsyncMock(return_value="这是反方回应")), \
              patch("app.routers.debates.ai_service.debate_feedback", new=AsyncMock(return_value=feedback)):
-            for argument in ("我的核心观点", "针对对方论据的质询", "回应质询并补充论据", "总结我方立场并回应辩题"):
-                self.assertEqual(self.client.post(f"/api/v1/debates/practice/{session_id}/argue", headers=headers, json={"argument": argument}).status_code, 200)
-            self.assertEqual(self.client.post(f"/api/v1/debates/practice/{session_id}/end", headers=headers).json()["data"]["overall_score"], 82)
+            for index, argument in enumerate(("我的核心观点", "针对对方论据的质询", "回应质询并补充论据", "总结我方立场并回应辩题")):
+                response = self.client.post(f"/api/v1/debates/practice/{session_id}/argue", headers=headers, json={"argument": argument, "submission_id": f"quick-turn-{index + 1}"})
+                self.assertEqual(response.status_code, 200)
+                if index == 0:
+                    duplicate = self.client.post(f"/api/v1/debates/practice/{session_id}/argue", headers=headers, json={"argument": argument, "submission_id": "quick-turn-1"})
+                    self.assertEqual(duplicate.json()["data"]["user_message_id"], response.json()["data"]["user_message_id"])
+            self.assertEqual(response.json()["data"]["status"], "awaiting_feedback")
+            first_end = self.client.post(f"/api/v1/debates/practice/{session_id}/end", headers=headers)
+            self.assertEqual(first_end.json()["data"]["overall_score"], 82)
+            points_after_first = self.client.get("/api/v1/users/profile", headers=headers).json()["data"]["total_points"]
+            second_end = self.client.post(f"/api/v1/debates/practice/{session_id}/end", headers=headers)
+            points_after_second = self.client.get("/api/v1/users/profile", headers=headers).json()["data"]["total_points"]
+            self.assertEqual(second_end.json()["data"], first_end.json()["data"])
+            self.assertEqual(points_after_second, points_after_first)
         with patch("app.routers.tours.ai_service.tour_report", new=AsyncMock(return_value="研学心得正文")):
+            points_before_tour = self.client.get("/api/v1/users/profile", headers=headers).json()["data"]["total_points"]
             tour = self.client.post("/api/v1/tours/generate-report", headers=headers, json={"site_id": "1", "qa_history": ["问答记录"]})
             self.assertEqual(tour.json()["data"]["report"], "研学心得正文")
+            repeated_tour = self.client.post("/api/v1/tours/generate-report", headers=headers, json={"site_id": "1", "qa_history": ["重复请求"]})
+            self.assertEqual(repeated_tour.json()["data"]["id"], tour.json()["data"]["id"])
+            points_after_tour = self.client.get("/api/v1/users/profile", headers=headers).json()["data"]["total_points"]
+            self.assertEqual(points_after_tour - points_before_tour, 3)
+            point_rows = self.client.get("/api/v1/users/points", headers=headers).json()["data"]
+            self.assertEqual(point_rows["by_module"]["tour"], 3)
         with patch("app.routers.knowledge.ai_service.generate_template", new=AsyncMock(return_value="思想汇报正文")):
             template = self.client.post("/api/v1/knowledge/templates/generate", headers=headers, json={"template_id": "2", "requirements": "结合学习经历"})
             self.assertEqual(template.json()["data"]["content"], "思想汇报正文")
         reports = self.client.get("/api/v1/users/reports", headers=headers).json()["data"]
-        self.assertGreaterEqual(len(reports), 3)
+        self.assertEqual({row["type"] for row in reports}, {"debate", "tour"})
+        self.assertTrue(all(row["source_record_id"] for row in reports))
+        template_history = self.client.get("/api/v1/knowledge/templates/history", headers=headers).json()["data"]
+        self.assertEqual(len(template_history), 1)
+        growth = self.client.get("/api/v1/users/growth", headers=headers).json()["data"]
+        self.assertEqual(growth["current_reports"], len(reports))
+        practices = self.client.get("/api/v1/users/practices", headers=headers).json()["data"]
+        self.assertTrue({"debate", "tour"}.issubset({row["module"] for row in practices["items"]}))
+        self.assertEqual(practices["summary"]["completed"], 2)
+        self.assertEqual(practices["summary"]["legacy"], 0)
 
     def test_08_ai_payload_validation_rejects_fake_scores(self):
         with self.assertRaises(AIResponseValidationError):
             validate_interview_report({"overall_score": 175})
         with self.assertRaises(AIResponseValidationError):
             validate_debate_feedback({"overall_score": 78, "dimension_scores": {}})
+        interview_turn = validate_interview_turn({
+            "question": "继续", "observations": {
+                "表达逻辑": {"observed": True, "score": 88, "confidence": .8, "evidence": ""},
+            },
+        })
+        self.assertFalse(interview_turn["observations"]["表达逻辑"]["observed"])
+        debate_turn = validate_debate_turn({
+            "argument": "回应", "argument_map": {"claims": "不应按字符拆分", "gaps": ["缺少数据"]},
+        })
+        self.assertEqual(debate_turn["argument_map"]["claims"], [])
 
     def test_09_community_like_and_task_workflow(self):
         student = self.login_headers(f"133{uuid.uuid4().int % 100_000_000:08d}")
@@ -144,6 +237,29 @@ class ApiAcceptanceTests(unittest.TestCase):
         rows = self.client.get(f"/api/v1/community/tasks/{task['id']}/submissions", headers=teacher).json()["data"]
         reviewed = self.client.put(f"/api/v1/community/tasks/submissions/{rows[0]['id']}/review", headers=teacher, json={"score": 90, "feedback": "观点清晰"})
         self.assertEqual(reviewed.json()["data"]["score"], 90)
+
+    def test_10_full_debate_step_machine_and_resume(self):
+        headers = self.login_headers(f"136{uuid.uuid4().int % 100_000_000:08d}")
+        started = self.client.post("/api/v1/debates/practice/start", headers=headers, json={"topic_id": "1", "stance": "con", "mode": "full"})
+        self.assertEqual(started.status_code, 200)
+        session_id = started.json()["data"]["id"]
+        mock_turn = AsyncMock(return_value={
+            "argument": "AI回应", "coach_feedback": {"stage_fit": "匹配", "strength": "观点清楚", "next_action": "补充依据"},
+            "argument_map": {"claims": ["主张"], "evidence": [], "reasoning": ["推理"], "gaps": ["缺少事实"]},
+        })
+        expected_steps = ["user_opening", "user_question", "user_counter_answer", "user_rebuttal", "user_defense", "user_closing"]
+        with patch("app.routers.debates.ai_service.debate_argue", new=mock_turn):
+            for index, step in enumerate(expected_steps):
+                response = self.client.post(f"/api/v1/debates/practice/{session_id}/argue", headers=headers, json={"argument": f"第{index + 1}步陈词", "submission_id": f"full-turn-{index + 1}"})
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json()["data"]["step"], step)
+        self.assertEqual(response.json()["data"]["next_stage"], "finished")
+        self.assertEqual(response.json()["data"]["status"], "awaiting_feedback")
+        resumed = self.client.post("/api/v1/debates/practice/start", headers=headers, json={"topic_id": "1", "stance": "con", "mode": "full"})
+        self.assertTrue(resumed.json()["data"]["resumed"])
+        self.assertEqual(resumed.json()["data"]["status"], "awaiting_feedback")
+        called_steps = [call.kwargs["step"] for call in mock_turn.await_args_list]
+        self.assertEqual(called_steps, expected_steps)
 
 
 if __name__ == "__main__":

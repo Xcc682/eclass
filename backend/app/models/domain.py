@@ -36,12 +36,14 @@ class TourRecord(Base):
 
 class GeneratedReport(Base):
     __tablename__ = "generated_reports"
+    __table_args__ = (UniqueConstraint("report_type", "source_record_id", name="uq_generated_report_source"),)
     id = Column(String, primary_key=True, default=gen_uuid)
     user_id = Column(String, ForeignKey("users.id"), nullable=False)
     report_type = Column(String(40), nullable=False)
     title = Column(String(300), nullable=False)
     score = Column(Integer, nullable=True)
     content_json = Column(Text, default="{}")
+    source_record_id = Column(String, nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -52,8 +54,10 @@ class TeacherTask(Base):
     title = Column(String(300), nullable=False)
     description = Column(Text, default="")
     deadline = Column(String(30), default="")
-    status = Column(String(20), default="active")
+    deadline_at = Column(DateTime, nullable=True)
+    status = Column(String(20), default="published")
     created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 class TaskSubmission(Base):
@@ -66,5 +70,27 @@ class TaskSubmission(Base):
     status = Column(String(20), default="submitted", nullable=False)
     score = Column(Integer, nullable=True)
     feedback = Column(Text, default="", nullable=False)
+    next_step = Column(Text, default="", nullable=False)
     submitted_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     reviewed_at = Column(DateTime, nullable=True)
+
+
+class TaskRubricCriterion(Base):
+    __tablename__ = "task_rubric_criteria"
+    id = Column(String, primary_key=True, default=gen_uuid)
+    task_id = Column(String, ForeignKey("teacher_tasks.id"), nullable=False, index=True)
+    title = Column(String(100), nullable=False)
+    description = Column(Text, default="", nullable=False)
+    weight = Column(Integer, nullable=False)
+    sort_order = Column(Integer, default=0, nullable=False)
+
+
+class TaskRubricScore(Base):
+    __tablename__ = "task_rubric_scores"
+    __table_args__ = (UniqueConstraint("submission_id", "criterion_id", name="uq_task_rubric_score"),)
+    id = Column(String, primary_key=True, default=gen_uuid)
+    submission_id = Column(String, ForeignKey("task_submissions.id"), nullable=False, index=True)
+    criterion_id = Column(String, ForeignKey("task_rubric_criteria.id"), nullable=False, index=True)
+    score = Column(Integer, nullable=False)
+    comment = Column(Text, default="", nullable=False)

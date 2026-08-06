@@ -2,7 +2,7 @@ import { api } from './request'
 import { resolveImmersiveMedia } from '@/assets/immersiveMedia'
 
 export type ImmersiveModule = 'history' | 'tour'
-export type SpreadType = 'cover' | 'cinematic' | 'exploration' | 'dialogue' | 'decision' | 'archive' | 'reflection' | 'ending'
+export type SpreadType = 'cover' | 'cinematic' | 'exploration' | 'dialogue' | 'decision' | 'detour' | 'archive' | 'reflection' | 'ending'
 
 export interface SourceReference {
   title: string
@@ -22,7 +22,6 @@ export interface SceneHotspot {
 export interface SceneOption {
   id: string
   label: string
-  feedback: string
 }
 
 export interface ImmersiveEventAnchor {
@@ -52,6 +51,10 @@ export interface ImmersiveScene {
   event?: ImmersiveEventAnchor
   timeline?: ImmersiveEventAnchor[]
   timeline_index?: number
+  milestone?: 'route' | 'evidence' | 'judgment'
+  detour_body?: string
+  return_label?: string
+  required_clues?: string[]
 }
 
 export interface ImmersiveSpread {
@@ -69,8 +72,21 @@ export interface ImmersiveSpread {
 
 export interface ImmersiveProgress {
   current_spread: number
+  current_spread_id?: string | null
   discovered_hotspots: string[]
   choice: { spread_id?: string; option_id?: string }
+  route: {
+    visited_spread_ids: string[]
+    unlocked_spread_ids: string[]
+    solved_decisions: string[]
+    decisions: Record<string, string>
+    attempts: Record<string, number>
+    wrong_routes: Array<{ decision_spread_id: string; option_id: string; target_spread_id: string; attempt: number }>
+    milestones: Array<{ id: string; key: 'route' | 'evidence' | 'judgment'; label: string; solved: boolean }>
+    required_count: number
+    solved_count: number
+  }
+  flow_version: number
   note: string
   qa_history: Array<{ q: string; a: string; spread_id?: string; created_at?: string }>
   sound_enabled: boolean
@@ -120,6 +136,10 @@ export const immersiveApi = {
     }
   },
   updateProgress: (bookId: string, data: ProgressPatch) => api.patch<ImmersiveProgress>(`/immersive/books/${bookId}/progress`, data, { toast: false }),
+  choose: (bookId: string, data: { decision_spread_id: string; option_id: string; submission_id: string }) =>
+    api.post<{ result: 'correct' | 'detour'; next_spread_id: string; feedback: string; hint: string; hint_level: number; spread: ImmersiveSpread; progress: ImmersiveProgress }>(`/immersive/books/${bookId}/choices`, data, { toast: false }),
+  advance: (bookId: string, data: { from_spread_id: string; direction: 'next' | 'back' | 'jump'; target_spread_id?: string }) =>
+    api.post<{ spread: ImmersiveSpread; progress: ImmersiveProgress }>(`/immersive/books/${bookId}/advance`, data, { toast: false }),
   ask: (bookId: string, question: string, spreadId?: string) => api.post<{ answer: string; qa_history: ImmersiveProgress['qa_history'] }>(`/immersive/books/${bookId}/ask`, { question, spread_id: spreadId }, { timeout: 55000 }),
   complete: (bookId: string) => api.post<{ completed: boolean; already_completed: boolean; points?: number; report: string; record_id?: string | null }>(`/immersive/books/${bookId}/complete`, {}, { timeout: 60000 }),
 }

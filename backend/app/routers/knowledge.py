@@ -4,6 +4,8 @@ from __future__ import annotations
 import json
 import asyncio
 import logging
+import re
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
@@ -56,6 +58,17 @@ class AskRequest(BaseModel):
     question: str = Field(min_length=1, max_length=1000)
     category: str | None = None
     session_id: str | None = None
+    submission_id: str | None = Field(default=None, min_length=8, max_length=64)
+    document_ids: list[str] = Field(default_factory=list, max_length=20)
+
+
+class SessionUpdateRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=100)
+
+
+class MessageFeedbackRequest(BaseModel):
+    helpful: bool
+    reason: str = Field(default="", max_length=500)
 
 
 class GenerateRequest(BaseModel):
@@ -79,6 +92,321 @@ class DocumentUpdateRequest(BaseModel):
     source_url: str = Field(default="", max_length=1000)
     summary: str = Field(default="", max_length=2000)
     version: int = Field(default=1, ge=1, le=9999)
+
+
+_FOLLOW_UP_RE = re.compile(r"^(它|这个|这条|上述|上一个|刚才|其中|两者|那|那么)|有什么区别|再说|继续|具体一点|为什么呢")
+_INLINE_CITATION_RE = re.compile(r"\[(\d+)\]")
+_FOLLOW_UP_DIRECTIONS = ("历史", "背景", "意义", "作用", "影响", "时间", "人物", "要求", "流程", "条件", "区别", "原因", "案例")
+_ASSISTANT_INTRO = (
+    "我是“思政情景工坊”的知识库助手。我可以从已审核资料中检索思政学习问题，"
+    "并给出可点击、可追溯的原文依据。你可以选择全部资料、指定分类或当前资料来提问；"
+    "如果现有资料不足以支持结论，我会明确说明，不会凭空补充。"
+)
+
+
+def _assistant_intro(topic: str) -> dict:
+    prefix = "你好，" if topic == "greeting" else ""
+    content = f"{prefix}{_ASSISTANT_INTRO}"
+    return {
+        "answer": content,
+        "answer_blocks": [
+            {"type": "heading", "text": "关于我", "citations": []},
+            {"type": "paragraph", "text": content, "citations": []},
+        ],
+        "citations": [],
+        "used_citation_indexes": [],
+        "follow_up_suggestions": [],
+    }
+
+
+def _safe_json(value: str | None, fallback):
+    try:
+        parsed = json.loads(value or "")
+        return parsed
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return fallback
+
+
+def _retrieval_query(question: str, history: list[KnowledgeMessage]) -> str:
+    if not _FOLLOW_UP_RE.search(question.strip()):
+        return question
+    previous = next((item.content for item in reversed(history) if item.role == "user"), "")
+    return f"{previous}\n追问：{question}" if previous else question
+
+
+def _legacy_blocks(content: str, citation_count: int) -> tuple[list[dict], list[int], str]:
+    content = re.sub(r"\[(\d+)\](?:\s*\[\1\])+", r"[\1]", content or "")
+    content = _INLINE_CITATION_RE.sub(
+        lambda match: match.group(0) if 1 <= int(match.group(1)) <= citation_count else "",
+        content,
+    )
+    blocks: list[dict] = []
+    used: list[int] = []
+    for raw_line in re.split(r"\n+", content):
+        line = raw_line.strip()
+        if not line:
+            continue
+        citations = []
+        for value in _INLINE_CITATION_RE.findall(line):
+            number = int(value)
+            if number not in citations:
+                citations.append(number)
+            if number not in used:
+                used.append(number)
+        text_value = _INLINE_CITATION_RE.sub("", line).strip()
+        kind = "list_item" if re.match(r"^(?:[-•]|\d+[.、])", text_value) else "paragraph"
+        text_value = re.sub(r"^(?:[-•]|\d+[.、])\s*", "", text_value)
+        if text_value:
+            blocks.append({"type": kind, "text": text_value, "citations": citations})
+    return blocks, used, content.strip()
+
+
+def _supported_suggestions(values: object, evidence_text: str, question: str = "") -> list[str]:
+    if not isinstance(values, list):
+        return []
+    suggestions: list[str] = []
+    for item in values:
+        if not isinstance(item, str) or not item.strip():
+            continue
+        suggestion = item.strip()
+        new_directions = [word for word in _FOLLOW_UP_DIRECTIONS if word in suggestion and word not in question]
+        if evidence_text and any(word not in evidence_text for word in new_directions):
+            continue
+        suggestions.append(suggestion)
+        if len(suggestions) >= 3:
+            break
+    return suggestions
+
+
+def _recover_structured_answer(raw: object) -> dict | None:
+    """Parse JSON answers and salvage complete blocks from a truncated model response."""
+    if isinstance(raw, dict):
+        return raw
+    if not isinstance(raw, str):
+        return None
+    cleaned = raw.strip()
+    cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+    cleaned = re.sub(r"\s*```$", "", cleaned)
+    cleaned = cleaned.replace("**", "")
+    if not cleaned.startswith("{"):
+        return None
+    try:
+        parsed = json.loads(cleaned)
+        return parsed if isinstance(parsed, dict) else None
+    except json.JSONDecodeError:
+        pass
+
+    match = re.search(r'"blocks"\s*:\s*\[', cleaned)
+    if not match:
+        return None
+    decoder = json.JSONDecoder()
+    position = match.end()
+    blocks: list[dict] = []
+    while position < len(cleaned):
+        while position < len(cleaned) and cleaned[position] in " \t\r\n,":
+            position += 1
+        if position >= len(cleaned) or cleaned[position] == "]":
+            break
+        if cleaned[position] != "{":
+            break
+        try:
+            value, position = decoder.raw_decode(cleaned, position)
+        except json.JSONDecodeError:
+            break
+        if isinstance(value, dict):
+            blocks.append(value)
+    return {"blocks": blocks, "follow_up_suggestions": []} if blocks else None
+
+
+def _grouped_citation_order(indexes: list[int], citations: list[dict]) -> list[int]:
+    """Keep document groups together, then number citations in their display order."""
+    citation_by_index = {
+        citation.get("index"): citation
+        for citation in citations
+        if isinstance(citation, dict) and isinstance(citation.get("index"), int)
+    }
+    groups: dict[str, list[int]] = {}
+    for index in indexes:
+        citation = citation_by_index.get(index)
+        if not citation:
+            continue
+        document_key = str(citation.get("document_id") or f"citation:{index}")
+        group = groups.setdefault(document_key, [])
+        if index not in group:
+            group.append(index)
+    return [index for group in groups.values() for index in group]
+
+
+def _remap_citation_display(
+    citations: list[dict], blocks: list[dict], content: str,
+) -> tuple[list[dict], list[dict], str]:
+    """Return citations, blocks and text with one shared, sequential display order."""
+    used: list[int] = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        for value in block.get("citations", []):
+            try:
+                index = int(value)
+            except (TypeError, ValueError):
+                continue
+            if index not in used:
+                used.append(index)
+    if not used:
+        for value in _INLINE_CITATION_RE.findall(content or ""):
+            index = int(value)
+            if index not in used:
+                used.append(index)
+
+    ordered = _grouped_citation_order(used, citations)
+    remap = {old: new for new, old in enumerate(ordered, start=1)}
+    citation_by_index = {
+        citation.get("index"): citation
+        for citation in citations
+        if isinstance(citation, dict)
+    }
+    selected: list[dict] = []
+    for old in ordered:
+        citation = citation_by_index.get(old)
+        if citation:
+            copied = dict(citation)
+            copied["index"] = remap[old]
+            selected.append(copied)
+
+    normalized_blocks: list[dict] = []
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        copied = dict(block)
+        copied["citations"] = sorted(set(
+            remap[int(value)]
+            for value in block.get("citations", [])
+            if str(value).isdigit() and int(value) in remap
+        ))
+        normalized_blocks.append(copied)
+    if normalized_blocks:
+        lines: list[str] = []
+        for block in normalized_blocks:
+            marks = "".join(f"[{index}]" for index in block.get("citations", []))
+            prefix = "- " if block.get("type") == "list_item" else ""
+            suffix = "" if block.get("type") == "heading" else marks
+            lines.append(f"{prefix}{block.get('text', '')}{suffix}")
+        normalized_content = "\n".join(lines)
+    else:
+        normalized_content = _INLINE_CITATION_RE.sub(
+            lambda match: f"[{remap[int(match.group(1))]}]" if int(match.group(1)) in remap else "",
+            content or "",
+        )
+    return selected, normalized_blocks, normalized_content
+
+
+def _normalize_answer(raw: object, citations: list[dict], question: str = "", contexts: list[dict] | None = None) -> dict:
+    recovered = _recover_structured_answer(raw)
+    if recovered is not None:
+        raw = recovered
+    if not isinstance(raw, dict):
+        blocks, used, answer = _legacy_blocks(str(raw or ""), len(citations))
+        if not used:
+            return {
+                "answer": "当前知识库没有足够依据。你可以换一种更具体的问法，或先在资料库中搜索相关文件。",
+                "answer_blocks": [], "citations": [], "used_citation_indexes": [], "follow_up_suggestions": [],
+            }
+        selected, blocks, answer = _remap_citation_display(citations, blocks, answer)
+        return {"answer": answer, "answer_blocks": blocks, "citations": selected,
+                "used_citation_indexes": list(range(1, len(selected) + 1)), "follow_up_suggestions": []}
+
+    valid_blocks: list[dict] = []
+    used_original: list[int] = []
+    for item in raw.get("blocks", []) if isinstance(raw.get("blocks"), list) else []:
+        if not isinstance(item, dict):
+            continue
+        kind = item.get("type") if item.get("type") in {"heading", "paragraph", "list_item"} else "paragraph"
+        text_value = re.sub(r"\[(\d+)\]", "", str(item.get("text", ""))).strip()
+        raw_indexes = item.get("citations") if isinstance(item.get("citations"), list) else []
+        indexes: list[int] = []
+        for value in raw_indexes:
+            try:
+                number = int(value)
+            except (TypeError, ValueError):
+                continue
+            if 1 <= number <= len(citations) and number not in indexes:
+                indexes.append(number)
+                if number not in used_original:
+                    used_original.append(number)
+        if not text_value or (kind != "heading" and not indexes):
+            continue
+        valid_blocks.append({"type": kind, "text": text_value, "citations": indexes})
+
+    if not valid_blocks or not used_original:
+        return {
+            "answer": "当前知识库没有足够依据。你可以换一种更具体的问法，或先在资料库中搜索相关文件。",
+            "answer_blocks": [], "citations": [], "used_citation_indexes": [], "follow_up_suggestions": [],
+        }
+    grouped_order = _grouped_citation_order(used_original, citations)
+    remap = {old: new for new, old in enumerate(grouped_order, start=1)}
+    selected = []
+    for old in grouped_order:
+        citation = dict(citations[old - 1])
+        citation["index"] = remap[old]
+        selected.append(citation)
+    lines = []
+    for block in valid_blocks:
+        block["citations"] = sorted({remap[index] for index in block["citations"]})
+        marks = "".join(f"[{index}]" for index in block["citations"])
+        prefix = "- " if block["type"] == "list_item" else ""
+        lines.append(f"{prefix}{block['text']}{marks if block['type'] != 'heading' else ''}")
+    evidence_text = "\n".join(str(item.get("content", "")) for item in (contexts or []))
+    suggestions = _supported_suggestions(raw.get("follow_up_suggestions", []), evidence_text, question)
+    return {"answer": "\n".join(lines), "answer_blocks": valid_blocks, "citations": selected,
+            "used_citation_indexes": list(range(1, len(selected) + 1)), "follow_up_suggestions": suggestions}
+
+
+def _message_payload(item: KnowledgeMessage) -> dict:
+    citations = _safe_json(item.citations_json, [])
+    answer_data = _safe_json(item.answer_json, {})
+    recovered = _recover_structured_answer(item.content) if item.role == "assistant" else None
+    if recovered is not None:
+        normalized = _normalize_answer(recovered, citations)
+        content = normalized["answer"]
+        citations = normalized["citations"]
+        answer_data = {
+            "answer_blocks": normalized["answer_blocks"],
+            "used_citation_indexes": normalized["used_citation_indexes"],
+            "follow_up_suggestions": normalized["follow_up_suggestions"],
+            "degraded": bool(answer_data.get("degraded", False)),
+        }
+    elif item.role == "assistant" and not answer_data.get("answer_blocks"):
+        blocks, _, normalized = _legacy_blocks(item.content, len(citations))
+        citations, blocks, content = _remap_citation_display(citations, blocks, normalized)
+        answer_data = {
+            "answer_blocks": blocks,
+            "used_citation_indexes": list(range(1, len(citations) + 1)),
+        }
+    elif item.role == "assistant":
+        citations, blocks, content = _remap_citation_display(
+            citations, answer_data.get("answer_blocks", []), item.content,
+        )
+        answer_data["answer_blocks"] = blocks
+        answer_data["used_citation_indexes"] = list(range(1, len(citations) + 1))
+    else:
+        content = item.content
+    follow_up_suggestions = _supported_suggestions(
+        answer_data.get("follow_up_suggestions", []),
+        "\n".join(str(citation.get("excerpt", "")) for citation in citations),
+    )
+    default_kind = "rag"
+    if item.role == "assistant" and not citations and str(content).startswith("当前知识库没有足够依据"):
+        default_kind = "no_evidence"
+    return {
+        "id": item.id, "role": item.role, "content": content, "citations": citations,
+        "answer_blocks": answer_data.get("answer_blocks", []),
+        "follow_up_suggestions": follow_up_suggestions,
+        "response_kind": answer_data.get("response_kind", default_kind),
+        "selected_tool": answer_data.get("selected_tool"),
+        "degraded": bool(answer_data.get("degraded", False)),
+        "submission_id": item.submission_id, "status": item.status or "sent", "error": item.error,
+        "feedback": item.feedback, "created_at": item.created_at.isoformat(),
+    }
 
 
 def _storage_dir() -> Path:
@@ -124,8 +452,16 @@ def _favorite_ids(db: Session, user_id: str, document_ids: list[str]) -> set[str
 
 
 @router.get("/status")
-def get_retrieval_status(_: User = Depends(get_current_user)):
-    return {"code": 0, "data": retrieval_status()}
+def get_retrieval_status(_: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    data = retrieval_status()
+    data["published_documents"] = db.scalar(select(func.count()).select_from(KnowledgeDocument).where(
+        KnowledgeDocument.status == "published"
+    )) or 0
+    data["indexed_chunks"] = db.scalar(select(func.count()).select_from(KnowledgeChunk).join(
+        KnowledgeDocument, KnowledgeDocument.id == KnowledgeChunk.document_id
+    ).where(KnowledgeDocument.status == "published")) or 0
+    data["llm_configured"] = bool(settings.LLM_API_KEY)
+    return {"code": 0, "data": data}
 
 
 @router.get("/documents")
@@ -142,21 +478,26 @@ def get_documents(
         filters.append(KnowledgeDocument.category == category)
 
     if q:
-        # Try FTS5 first; fall back to ILIKE for Chinese text
+        # Try FTS5 first; fall back to ILIKE for Chinese text. Malformed FTS
+        # syntax (quotes, operators) must not surface as a 500 on this public
+        # endpoint, so any FTS error falls through to the ILIKE branch below.
         matched_ids: list[str] = []
         total = 0
         if _ensure_fts():
-            scoring_sql = text("""
-                SELECT d.id, MAX(bm25(knowledge_chunks_fts)) AS score
-                FROM knowledge_chunks_fts
-                JOIN knowledge_chunks c ON c.id = knowledge_chunks_fts.chunk_id
-                JOIN knowledge_documents d ON d.id = c.document_id
-                WHERE knowledge_chunks_fts MATCH :query AND d.status = 'published'
-                GROUP BY d.id
-            """)
-            ids_with_scores = dict(db.execute(scoring_sql, {"query": q}).all())  # type: ignore[arg-type]
-            matched_ids = sorted(ids_with_scores.keys(), key=lambda doc_id: ids_with_scores[doc_id], reverse=True)
-            total = len(matched_ids)
+            try:
+                scoring_sql = text("""
+                    SELECT d.id, MAX(bm25(knowledge_chunks_fts)) AS score
+                    FROM knowledge_chunks_fts
+                    JOIN knowledge_chunks c ON c.id = knowledge_chunks_fts.chunk_id
+                    JOIN knowledge_documents d ON d.id = c.document_id
+                    WHERE knowledge_chunks_fts MATCH :query AND d.status = 'published'
+                    GROUP BY d.id
+                """)
+                ids_with_scores = dict(db.execute(scoring_sql, {"query": q}).all())  # type: ignore[arg-type]
+                matched_ids = sorted(ids_with_scores.keys(), key=lambda doc_id: ids_with_scores[doc_id], reverse=True)
+                total = len(matched_ids)
+            except Exception as exc:
+                logger.warning("[knowledge] FTS document query failed, falling back to ILIKE: %s", exc)
 
         if not matched_ids:
             # Fallback to ILIKE with title-first heuristic ordering
@@ -461,6 +802,8 @@ def search_knowledge(data: SearchRequest, _: User = Depends(get_current_user), d
 
 @router.post("/ask")
 async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    started_at = time.perf_counter()
+    submission_id = data.submission_id or uuid.uuid4().hex
     session = db.get(KnowledgeSession, data.session_id) if data.session_id else None
     if session and session.user_id != user.id:
         raise HTTPException(status_code=403, detail="无权访问该会话")
@@ -468,63 +811,213 @@ async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user)
         session = KnowledgeSession(user_id=user.id, title=data.question[:60])
         db.add(session)
         db.flush()
-    try:
-        contexts = await asyncio.wait_for(
-            retrieve_async(data.question, data.category, limit=6, use_vector=True),
-            timeout=settings.KNOWLEDGE_RETRIEVAL_TIMEOUT_SECONDS,
-        )
-    except asyncio.TimeoutError:
-        logger.warning("[knowledge] vector_retrieval_timeout fallback=keyword_only")
-        try:
-            contexts = await asyncio.wait_for(
-                retrieve_async(data.question, data.category, limit=6, use_vector=False),
-                timeout=settings.KNOWLEDGE_KEYWORD_FALLBACK_TIMEOUT_SECONDS,
-            )
-        except Exception as exc:
-            logger.exception("[knowledge] keyword_fallback_failed error=%s", exc.__class__.__name__)
-            raise HTTPException(status_code=503, detail="知识库检索暂不可用，请稍后重试") from exc
-    except Exception as exc:
-        logger.warning("[knowledge] hybrid_retrieval_failed fallback=keyword_only error=%s", exc.__class__.__name__)
-        try:
-            contexts = await asyncio.wait_for(
-                retrieve_async(data.question, data.category, limit=6, use_vector=False),
-                timeout=settings.KNOWLEDGE_KEYWORD_FALLBACK_TIMEOUT_SECONDS,
-            )
-        except Exception as fallback_exc:
-            logger.exception("[knowledge] keyword_fallback_failed error=%s", fallback_exc.__class__.__name__)
-            raise HTTPException(status_code=503, detail="知识库检索暂不可用，请稍后重试") from fallback_exc
-    # Sort by retrieval score (RRF fusion of keyword+vector), keep top 6
-    contexts = sorted(contexts, key=lambda c: c.get('score', 0), reverse=True)[:6]
 
-    citations = [{
-        "index": index,
-        "document_id": item["document_id"],
-        "document_title": item["title"],
-        "source": item["source"],
-        "source_url": item["source_url"],
-        "chunk_id": item["chunk_id"],
-        "chunk_index": item["chunk_index"],
-        "excerpt": item["content"][:300],
-    } for index, item in enumerate(contexts, start=1)]
-    if contexts:
-        try:
-            logger.info("[knowledge] llm_answer_start citations=%s", len(citations))
-            answer = await asyncio.wait_for(
-                ai_service.knowledge_answer(data.question, contexts),
-                timeout=settings.KNOWLEDGE_LLM_TIMEOUT_SECONDS,
-            )
-            logger.info("[knowledge] llm_answer_done citations=%s", len(citations))
-        except asyncio.TimeoutError as exc:
-            logger.warning("[knowledge] llm_answer_timeout")
-            raise HTTPException(status_code=503, detail="AI 回答超时，请稍后重试；资料依据已检索完成但未生成回答") from exc
-        except Exception as exc:
-            raise HTTPException(status_code=503, detail="AI 服务暂不可用，请稍后重试") from exc
-    else:
-        answer = "当前知识库没有足够依据。"
-    db.add(KnowledgeMessage(session_id=session.id, role="user", content=data.question))
-    db.add(KnowledgeMessage(session_id=session.id, role="assistant", content=answer, citations_json=json.dumps(citations, ensure_ascii=False)))
+    existing_user = db.scalar(select(KnowledgeMessage).where(
+        KnowledgeMessage.session_id == session.id,
+        KnowledgeMessage.role == "user",
+        KnowledgeMessage.submission_id == submission_id,
+    ))
+    existing_answer = db.scalar(select(KnowledgeMessage).where(
+        KnowledgeMessage.session_id == session.id,
+        KnowledgeMessage.role == "assistant",
+        KnowledgeMessage.submission_id == submission_id,
+    ))
+    if existing_answer and existing_answer.status == "sent":
+        answer_data = _safe_json(existing_answer.answer_json, {})
+        payload = _message_payload(existing_answer)
+        return {"code": 0, "data": {
+            "answer": payload["content"], "session_id": session.id, "message_id": existing_answer.id,
+            "submission_id": submission_id, "status": "sent", "citations": payload["citations"],
+            "answer_blocks": payload["answer_blocks"],
+            "used_citation_indexes": list(range(1, len(payload["citations"]) + 1)),
+            "follow_up_suggestions": payload["follow_up_suggestions"],
+            "response_kind": payload["response_kind"],
+            "selected_tool": payload["selected_tool"],
+            "degraded": payload["degraded"], "cached": True,
+        }}
+    if existing_user and existing_user.status == "pending":
+        age = (datetime.utcnow() - (existing_user.updated_at or existing_user.created_at)).total_seconds()
+        if age < 90:
+            raise HTTPException(status_code=409, detail={"code": "SUBMISSION_PROCESSING", "message": "该问题仍在处理中，请稍后查看历史"})
+        existing_user.status = "failed"
+        existing_user.error = "上次请求未完成，可以重新发送"
+
+    history = db.scalars(select(KnowledgeMessage).where(
+        KnowledgeMessage.session_id == session.id,
+        KnowledgeMessage.status == "sent",
+    ).order_by(KnowledgeMessage.created_at.desc()).limit(6)).all()
+    history = list(reversed(history))
+    retrieval_query = _retrieval_query(data.question, history)
+    document_ids = list(dict.fromkeys(data.document_ids))
+    if document_ids:
+        available = set(db.scalars(select(KnowledgeDocument.id).where(
+            KnowledgeDocument.id.in_(document_ids), KnowledgeDocument.status == "published"
+        )).all())
+        document_ids = [item for item in document_ids if item in available]
+        if not document_ids:
+            raise HTTPException(status_code=404, detail="指定资料不存在或尚未发布")
+
+    user_message = existing_user or KnowledgeMessage(
+        session_id=session.id, role="user", content=data.question,
+        submission_id=submission_id, status="pending",
+    )
+    user_message.content = data.question
+    user_message.status = "pending"
+    user_message.error = None
+    if not existing_user:
+        db.add(user_message)
     session.updated_at = datetime.utcnow()
-    return {"code": 0, "data": {"answer": answer, "session_id": session.id, "citations": citations}}
+    db.commit()
+
+    history_payload = [{"role": item.role, "content": item.content} for item in history]
+    degraded = False
+    selected_tool = "search_knowledge"
+    tool_call: dict = {
+        "name": "search_knowledge",
+        "arguments": {"query": retrieval_query},
+        "tool_call_id": f"fallback-{submission_id}",
+    }
+    tool_started_at = time.perf_counter()
+    try:
+        tool_call = await asyncio.wait_for(
+            ai_service.select_knowledge_tool(data.question, history_payload),
+            timeout=min(12.0, settings.KNOWLEDGE_LLM_TIMEOUT_SECONDS),
+        )
+        selected_tool = tool_call["name"]
+        logger.info(
+            "[knowledge] tool_selection_done request_id=%s tool=%s elapsed_ms=%s",
+            submission_id, selected_tool, int((time.perf_counter() - tool_started_at) * 1000),
+        )
+    except Exception as exc:
+        degraded = True
+        logger.warning(
+            "[knowledge] tool_selection_fallback request_id=%s error=%s fallback=search_knowledge elapsed_ms=%s",
+            submission_id, exc.__class__.__name__, int((time.perf_counter() - tool_started_at) * 1000),
+        )
+
+    citations: list[dict] = []
+    contexts: list[dict] = []
+    if selected_tool == "describe_assistant":
+        normalized = _assistant_intro(str(tool_call.get("arguments", {}).get("topic", "identity")))
+        response_kind = "assistant_intro"
+    else:
+        selected_tool = "search_knowledge"
+        tool_query = str(tool_call.get("arguments", {}).get("query") or retrieval_query).strip()
+        if "\n追问：" in retrieval_query and retrieval_query.split("\n追问：", 1)[0] not in tool_query:
+            tool_query = f"{retrieval_query}\n检索改写：{tool_query}"
+        retrieval_query = tool_query[:1000]
+        retrieval_started_at = time.perf_counter()
+        try:
+            contexts = await asyncio.wait_for(
+                retrieve_async(retrieval_query, data.category, limit=6, use_vector=True, document_ids=document_ids),
+                timeout=settings.KNOWLEDGE_RETRIEVAL_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("[knowledge] vector_retrieval_timeout request_id=%s fallback=keyword_only", submission_id)
+            degraded = True
+            try:
+                contexts = await asyncio.wait_for(
+                    retrieve_async(retrieval_query, data.category, limit=6, use_vector=False, document_ids=document_ids),
+                    timeout=settings.KNOWLEDGE_KEYWORD_FALLBACK_TIMEOUT_SECONDS,
+                )
+            except Exception as exc:
+                logger.exception("[knowledge] keyword_fallback_failed request_id=%s error=%s", submission_id, exc.__class__.__name__)
+                user_message = db.get(KnowledgeMessage, user_message.id)
+                user_message.status, user_message.error = "failed", "知识库检索暂不可用，请稍后重试"
+                db.commit()
+                raise HTTPException(status_code=503, detail="知识库检索暂不可用，请稍后重试") from exc
+        except Exception as exc:
+            logger.warning("[knowledge] hybrid_retrieval_failed request_id=%s fallback=keyword_only error=%s", submission_id, exc.__class__.__name__)
+            degraded = True
+            try:
+                contexts = await asyncio.wait_for(
+                    retrieve_async(retrieval_query, data.category, limit=6, use_vector=False, document_ids=document_ids),
+                    timeout=settings.KNOWLEDGE_KEYWORD_FALLBACK_TIMEOUT_SECONDS,
+                )
+            except Exception as fallback_exc:
+                logger.exception("[knowledge] keyword_fallback_failed request_id=%s error=%s", submission_id, fallback_exc.__class__.__name__)
+                user_message = db.get(KnowledgeMessage, user_message.id)
+                user_message.status, user_message.error = "failed", "知识库检索暂不可用，请稍后重试"
+                db.commit()
+                raise HTTPException(status_code=503, detail="知识库检索暂不可用，请稍后重试") from fallback_exc
+        contexts = sorted(contexts, key=lambda c: c.get("score", 0), reverse=True)[:6]
+        logger.info(
+            "[knowledge] retrieval_done request_id=%s evidence=%s elapsed_ms=%s",
+            submission_id, len(contexts), int((time.perf_counter() - retrieval_started_at) * 1000),
+        )
+        citations = [{
+            "index": index,
+            "document_id": item["document_id"],
+            "document_title": item["title"],
+            "source": item["source"],
+            "source_url": item["source_url"],
+            "chunk_id": item["chunk_id"],
+            "chunk_index": item["chunk_index"],
+            "excerpt": item["content"][:300],
+        } for index, item in enumerate(contexts, start=1)]
+        if contexts:
+            try:
+                logger.info("[knowledge] llm_answer_start request_id=%s citations=%s", submission_id, len(citations))
+                raw_answer = await asyncio.wait_for(
+                    ai_service.knowledge_answer(
+                        data.question, contexts, history_payload, tool_call=tool_call,
+                    ),
+                    timeout=settings.KNOWLEDGE_LLM_TIMEOUT_SECONDS,
+                )
+                normalized = _normalize_answer(raw_answer, citations, data.question, contexts)
+                logger.info("[knowledge] llm_answer_done request_id=%s citations=%s", submission_id, len(normalized["citations"]))
+            except asyncio.TimeoutError as exc:
+                logger.warning("[knowledge] llm_answer_timeout request_id=%s", submission_id)
+                user_message = db.get(KnowledgeMessage, user_message.id)
+                user_message.status, user_message.error = "failed", "AI 回答超时，资料依据已检索完成"
+                db.commit()
+                raise HTTPException(status_code=503, detail="AI 回答超时，请稍后重试；资料依据已检索完成但未生成回答") from exc
+            except Exception as exc:
+                user_message = db.get(KnowledgeMessage, user_message.id)
+                user_message.status, user_message.error = "failed", "AI 服务暂不可用，请稍后重试"
+                db.commit()
+                raise HTTPException(status_code=503, detail="AI 服务暂不可用，请稍后重试") from exc
+            response_kind = "rag" if normalized["citations"] else "no_evidence"
+        else:
+            normalized = {
+                "answer": "当前知识库没有足够依据。你可以换一种更具体的问法，或先在资料库中搜索相关文件。",
+                "answer_blocks": [], "citations": [], "used_citation_indexes": [], "follow_up_suggestions": [],
+            }
+            response_kind = "no_evidence"
+
+    answer_meta = {
+        "answer_blocks": normalized["answer_blocks"],
+        "used_citation_indexes": normalized["used_citation_indexes"],
+        "follow_up_suggestions": normalized["follow_up_suggestions"],
+        "response_kind": response_kind,
+        "selected_tool": selected_tool,
+        "degraded": degraded,
+    }
+    assistant_message = KnowledgeMessage(
+        session_id=session.id, role="assistant", content=normalized["answer"],
+        citations_json=json.dumps(normalized["citations"], ensure_ascii=False),
+        answer_json=json.dumps(answer_meta, ensure_ascii=False),
+        submission_id=submission_id, status="sent",
+    )
+    db.add(assistant_message)
+    user_message = db.get(KnowledgeMessage, user_message.id)
+    user_message.status = "sent"
+    user_message.error = None
+    session.updated_at = datetime.utcnow()
+    db.flush()
+    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+    logger.info("[knowledge] ask_done request_id=%s degraded=%s evidence=%s elapsed_ms=%s",
+                submission_id, degraded, len(normalized["citations"]), elapsed_ms)
+    return {"code": 0, "data": {
+        "answer": normalized["answer"], "session_id": session.id, "message_id": assistant_message.id,
+        "submission_id": submission_id, "status": "sent", "citations": normalized["citations"],
+        "answer_blocks": normalized["answer_blocks"],
+        "used_citation_indexes": normalized["used_citation_indexes"],
+        "follow_up_suggestions": normalized["follow_up_suggestions"],
+        "response_kind": response_kind,
+        "selected_tool": selected_tool,
+        "degraded": degraded, "cached": False,
+    }}
 
 
 @router.post("/favorites/{document_id}")
@@ -572,9 +1065,27 @@ def get_recent(user: User = Depends(get_current_user), db: Session = Depends(get
 
 
 @router.get("/sessions")
-def get_sessions(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    rows = db.scalars(select(KnowledgeSession).where(KnowledgeSession.user_id == user.id).order_by(KnowledgeSession.updated_at.desc())).all()
-    return {"code": 0, "data": [{"id": row.id, "title": row.title, "created_at": row.created_at.isoformat(), "updated_at": row.updated_at.isoformat()} for row in rows]}
+def get_sessions(
+    q: str | None = Query(default=None, max_length=100),
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=30, ge=1, le=100),
+    user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    filters = [
+        KnowledgeSession.user_id == user.id,
+        select(KnowledgeMessage.id).where(KnowledgeMessage.session_id == KnowledgeSession.id).exists(),
+    ]
+    if q:
+        filters.append(KnowledgeSession.title.ilike(f"%{q.strip()}%"))
+    total = db.scalar(select(func.count()).select_from(KnowledgeSession).where(*filters)) or 0
+    rows = db.scalars(select(KnowledgeSession).where(*filters).order_by(
+        KnowledgeSession.updated_at.desc()
+    ).offset((page - 1) * page_size).limit(page_size)).all()
+    return {"code": 0, "data": [{
+        "id": row.id, "title": row.title, "created_at": row.created_at.isoformat(),
+        "updated_at": row.updated_at.isoformat(),
+    } for row in rows], "pagination": {"page": page, "page_size": page_size, "total": total}}
 
 
 @router.get("/sessions/{session_id}")
@@ -583,7 +1094,31 @@ def get_session(session_id: str, user: User = Depends(get_current_user), db: Ses
     if not session or session.user_id != user.id:
         raise HTTPException(status_code=404, detail="会话不存在")
     messages = db.scalars(select(KnowledgeMessage).where(KnowledgeMessage.session_id == session.id).order_by(KnowledgeMessage.created_at.asc())).all()
-    return {"code": 0, "data": {"id": session.id, "title": session.title, "messages": [{"id": item.id, "role": item.role, "content": item.content, "citations": json.loads(item.citations_json or "[]"), "created_at": item.created_at.isoformat()} for item in messages]}}
+    return {"code": 0, "data": {"id": session.id, "title": session.title, "messages": [_message_payload(item) for item in messages]}}
+
+
+@router.patch("/sessions/{session_id}")
+def update_session(session_id: str, data: SessionUpdateRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    session = db.get(KnowledgeSession, session_id)
+    if not session or session.user_id != user.id:
+        raise HTTPException(status_code=404, detail="会话不存在")
+    title = data.title.strip()
+    if not title:
+        raise HTTPException(status_code=422, detail="会话标题不能为空")
+    session.title = title
+    session.updated_at = datetime.utcnow()
+    return {"code": 0, "data": {"id": session.id, "title": session.title, "updated_at": session.updated_at.isoformat()}}
+
+
+@router.post("/messages/{message_id}/feedback")
+def save_message_feedback(message_id: str, data: MessageFeedbackRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    message = db.get(KnowledgeMessage, message_id)
+    session = db.get(KnowledgeSession, message.session_id) if message else None
+    if not message or message.role != "assistant" or not session or session.user_id != user.id:
+        raise HTTPException(status_code=404, detail="回答不存在")
+    message.feedback = "helpful" if data.helpful else "unhelpful"
+    message.feedback_reason = data.reason.strip() or None
+    return {"code": 0, "data": {"id": message.id, "feedback": message.feedback}}
 
 
 @router.delete("/sessions/{session_id}")

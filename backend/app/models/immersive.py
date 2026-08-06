@@ -27,6 +27,7 @@ class ImmersiveBook(Base):
     status = Column(String(20), default="published", nullable=False, index=True)
     duration_estimate = Column(Integer, default=15, nullable=False)
     order_index = Column(Integer, default=0, nullable=False)
+    graph_json = Column(Text, default="{}", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
@@ -57,6 +58,9 @@ class ImmersiveProgress(Base):
     user_id = Column(String, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     book_id = Column(String, ForeignKey("immersive_books.id", ondelete="CASCADE"), nullable=False, index=True)
     current_spread = Column(Integer, default=0, nullable=False)
+    current_spread_id = Column(String, nullable=True)
+    route_state_json = Column(Text, default="{}", nullable=False)
+    flow_version = Column(Integer, default=1, nullable=False)
     discovered_json = Column(Text, default="[]", nullable=False)
     choice_json = Column(Text, default="{}", nullable=False)
     note = Column(Text, default="", nullable=False)

@@ -12,6 +12,7 @@
         <div class="report__grade">
           <span class="report__grade-badge">{{ grade || '评估中' }}</span>
           <span class="report__grade-desc">继续保持，稳步提升！</span>
+          <span class="report__grade-notice">AI 训练评估仅用于练习反馈，不代表党组织正式评价</span>
         </div>
       </div>
 
@@ -135,7 +136,7 @@ function getScoreColor(score: number): string {
 }
 
 function practiceAgain() {
-  uni.redirectTo({ url: '/pages/interview/interview' })
+  uni.switchTab({ url: '/pages/interview/interview' })
 }
 
 function shareReport() {
@@ -161,6 +162,7 @@ function shareReport() {
 .report__grade { text-align: center; }
 .report__grade-badge { display: inline-block; background: rgba(255,255,255,0.2); color: #FFFFFF; font-size: 28rpx; padding: 8rpx 32rpx; border-radius: 4px; font-weight: 600; margin-bottom: 8rpx; }
 .report__grade-desc { font-size: 24rpx; color: rgba(255,255,255,0.8); display: block; }
+.report__grade-notice { display: block; max-width: 560rpx; margin: 14rpx auto 0; font-size: 20rpx; line-height: 1.6; color: rgba(255,255,255,0.66); }
 
 /* Cards */
 .report__card { margin: 24rpx 32rpx; background: var(--color-card);

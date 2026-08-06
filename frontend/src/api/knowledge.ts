@@ -34,8 +34,40 @@ export interface Citation {
   relevance_score?: number
   relevance_reason?: string
 }
-export interface KnowledgeMessage { id: string; role: 'user' | 'assistant'; content: string; citations: Citation[]; created_at: string }
+export interface AnswerBlock { type: 'heading' | 'paragraph' | 'list_item'; text: string; citations: number[] }
+export type KnowledgeResponseKind = 'rag' | 'assistant_intro' | 'no_evidence'
+export interface KnowledgeMessage {
+  id: string
+  role: 'user' | 'assistant'
+  content: string
+  citations: Citation[]
+  answer_blocks?: AnswerBlock[]
+  follow_up_suggestions?: string[]
+  response_kind?: KnowledgeResponseKind
+  selected_tool?: 'search_knowledge' | 'describe_assistant'
+  degraded?: boolean
+  submission_id?: string
+  status?: 'pending' | 'sent' | 'failed'
+  error?: string
+  feedback?: 'helpful' | 'unhelpful'
+  created_at: string
+}
 export interface KnowledgeSession { id: string; title: string; created_at: string; updated_at: string; messages?: KnowledgeMessage[] }
+export interface KnowledgeAskResult {
+  answer: string
+  session_id: string
+  message_id: string
+  submission_id: string
+  status: 'sent'
+  citations: Citation[]
+  answer_blocks: AnswerBlock[]
+  used_citation_indexes: number[]
+  follow_up_suggestions: string[]
+  response_kind: KnowledgeResponseKind
+  selected_tool: 'search_knowledge' | 'describe_assistant'
+  degraded: boolean
+  cached?: boolean
+}
 export interface KnowledgeIngestionJob {
   id: string
   document_id: string
@@ -118,15 +150,19 @@ export const knowledgeApi = {
   getDocumentChunk: (id: string, index: number) => api.get<{ id: string; document_id: string; chunk_index: number; content: string }>(`/knowledge/documents/${id}/chunks/${index}`),
   getTemplates: () => api.get<KnowledgeTemplate[]>('/knowledge/templates'),
   search: (query: string, category?: string) => api.post<KnowledgeDocument[]>('/knowledge/search', { query, category }),
-  ask: (question: string, session_id?: string, category?: string) => api.post<{ answer: string; session_id: string; citations: Citation[] }>('/knowledge/ask', { question, session_id, category }, { timeout: 65000, toast: false }),
-  sessions: () => api.get<KnowledgeSession[]>('/knowledge/sessions'),
+  ask: (question: string, options: { session_id?: string; category?: string; document_ids?: string[]; submission_id?: string } = {}) =>
+    api.post<KnowledgeAskResult>('/knowledge/ask', { question, ...options }, { timeout: 65000, toast: false }),
+  status: () => api.get<{ mode: string; vector_healthy: boolean; embedding_loaded: boolean; published_documents: number; indexed_chunks: number; llm_configured: boolean }>('/knowledge/status'),
+  sessions: (q = '', page = 1, page_size = 30) => api.get<KnowledgeSession[]>(`/knowledge/sessions${queryString({ q, page, page_size })}`),
   session: (id: string) => api.get<KnowledgeSession>(`/knowledge/sessions/${id}`),
+  updateSession: (id: string, title: string) => api.patch<{ id: string; title: string; updated_at: string }>(`/knowledge/sessions/${id}`, { title }),
   deleteSession: (id: string) => api.delete<{ id: string; deleted: boolean }>(`/knowledge/sessions/${id}`),
+  feedback: (messageId: string, helpful: boolean, reason = '') => api.post<{ id: string; feedback: 'helpful'|'unhelpful' }>(`/knowledge/messages/${messageId}/feedback`, { helpful, reason }),
   favorite: (id: string) => api.post(`/knowledge/favorites/${id}`),
   unfavorite: (id: string) => api.delete(`/knowledge/favorites/${id}`),
   favorites: () => api.get<KnowledgeDocument[]>('/knowledge/favorites'),
   recent: () => api.get<KnowledgeDocument[]>('/knowledge/recent'),
-  generate: (template_id: string, requirements = '', personal_background = '') => api.post<{ id: string; title: string; content: string }>('/knowledge/templates/generate', { template_id, requirements, personal_background }),
+  generate: (template_id: string, requirements = '', personal_background = '') => api.post<{ id: string; title: string; content: string }>('/knowledge/templates/generate', { template_id, requirements, personal_background }, { timeout: 65000, toast: false }),
   templateHistory: () => api.get<Array<{ id: string; title: string; content: string; created_at: string }>>('/knowledge/templates/history'),
   updateTemplateHistory: (id: string, content: string) => api.put<{ id: string; content: string }>(`/knowledge/templates/history/${id}`, { content }),
   deleteTemplateHistory: (id: string) => api.delete<{ id: string; deleted: boolean }>(`/knowledge/templates/history/${id}`),

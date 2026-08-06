@@ -1,6 +1,8 @@
 // @dcloudio/uni-app shim for H5 mode
 // Provides lifecycle hooks compatible with Vue Router
 
+import { onBeforeUnmount, onMounted, onUnmounted as vueOnUnmounted } from 'vue'
+
 type LifecycleHook = (fn: (...args: any[]) => void) => void
 
 function getRouteQuery(): Record<string, string> {
@@ -22,11 +24,14 @@ export const onLoad: LifecycleHook = (fn) => {
 }
 
 export const onLaunch: LifecycleHook = (fn) => fn()
-export const onShow: LifecycleHook = (fn) => {}
-export const onHide: LifecycleHook = (fn) => {}
+// Vue Router mounts a fresh page component on navigation. Mapping onShow to
+// onMounted keeps H5 aligned with uni-app pages without firing the hook during
+// setup before refs and computed state are ready.
+export const onShow: LifecycleHook = (fn) => onMounted(fn)
+export const onHide: LifecycleHook = (fn) => onBeforeUnmount(fn)
 export const onReady: LifecycleHook = (fn) => setTimeout(fn, 0)
-export const onUnload: LifecycleHook = (fn) => {}
-export const onUnmounted: LifecycleHook = (fn) => {}
+export const onUnload: LifecycleHook = (fn) => onBeforeUnmount(fn)
+export const onUnmounted: LifecycleHook = (fn) => vueOnUnmounted(fn)
 
 // Provide a stub for uni-app page setup
 export function definePageConfig() { return {} }

@@ -1,5 +1,5 @@
 <template>
-  <div class="navbar" :style="{ paddingTop: statusBarHeight + 'px' }">
+  <div class="navbar" :class="{'navbar--root':root}" :style="{ paddingTop: statusBarHeight + 'px' }">
     <div class="navbar__inner">
       <div class="navbar__left" @click="goBack" v-if="showBack">
         <IconSet name="back" size="44rpx" color="#FFFFFF" />
@@ -20,10 +20,12 @@ withDefaults(defineProps<{
   title?: string
   showBack?: boolean
   statusBarHeight?: number
+  root?: boolean
 }>(), {
   title: '思政情景工坊',
   showBack: false,
-  statusBarHeight: 0
+  statusBarHeight: 0,
+  root: false
 })
 
 function goBack() {
@@ -46,6 +48,10 @@ function goBack() {
   backdrop-filter: blur(16px);
 }
 .navbar__inner {
+  width: 100%;
+  max-width: var(--desktop-dashboard, 1180px);
+  margin: 0 auto;
+  box-sizing: border-box;
   height: 92rpx;
   display: flex;
   align-items: center;

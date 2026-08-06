@@ -10,14 +10,14 @@
     "type-check": "vue-tsc --noEmit"
   },
   "dependencies": {
-    "@vue/compiler-sfc": "^3.4.21",
-    "@vue/runtime-core": "^3.4.21",
-    "@vue/runtime-dom": "^3.4.21",
-    "@vue/shared": "^3.5.38",
+    "@vue/compiler-sfc": "3.4.21",
+    "@vue/runtime-core": "3.4.21",
+    "@vue/runtime-dom": "3.4.21",
+    "@vue/shared": "3.4.21",
     "echarts": "^5.5.0",
-    "pinia": "^2.1.0",
-    "vue": "^3.5.38",
-    "vue-router": "^4.6.4"
+    "pinia": "2.1.7",
+    "vue": "3.4.21",
+    "vue-router": "4.4.4"
   },
   "devDependencies": {
     "@dcloudio/types": "^3.4.0",

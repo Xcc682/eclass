@@ -14,19 +14,19 @@
 
     <!-- 统计数据 -->
     <div class="profile__stats">
-      <div class="profile__stat" @click="goToGrowth">
-        <span class="profile__stat-value">{{ profile?.growth?.total_interviews || 0 }}</span>
-        <span class="profile__stat-label">练习次数</span>
+      <div class="profile__stat" @click="goToPractices">
+        <span class="profile__stat-value">{{ effectiveCompletions }}</span>
+        <span class="profile__stat-label">有效完成</span>
       </div>
-      <div class="profile__stat">
+      <div class="profile__stat" @click="goToGrowth">
         <span class="profile__stat-value">{{ profile?.total_points || 0 }}</span>
         <span class="profile__stat-label">总积分</span>
       </div>
-      <div class="profile__stat">
-        <span class="profile__stat-value">{{ profile?.growth?.total_reports || 0 }}</span>
-        <span class="profile__stat-label">报告</span>
+      <div class="profile__stat" @click="goToReports">
+        <span class="profile__stat-value">{{ profile?.growth?.current_reports ?? profile?.growth?.total_reports ?? 0 }}</span>
+        <span class="profile__stat-label">有效报告</span>
       </div>
-      <div class="profile__stat">
+      <div class="profile__stat" @click="goToGrowth">
         <span class="profile__stat-value">{{ profile?.growth?.rank || '--' }}</span>
         <span class="profile__stat-label">排名</span>
       </div>
@@ -34,6 +34,16 @@
 
     <!-- 功能菜单 -->
     <div class="profile__menu">
+      <div class="profile__menu-item" @click="goToMyCommunity">
+        <span class="profile__menu-icon"><IconSet name="community" size="32rpx" /></span>
+        <span class="profile__menu-text">我的社区 <small>发布、收藏与关注</small></span>
+        <span class="profile__menu-arrow">›</span>
+      </div>
+      <div v-if="profile?.features?.notifications_available" class="profile__menu-item" @click="goToNotifications">
+        <span class="profile__menu-icon"><IconSet name="bell" size="32rpx" /></span>
+        <span class="profile__menu-text">社区消息 <small>回复与教师反馈</small></span>
+        <span class="profile__menu-arrow">›</span>
+      </div>
       <div class="profile__menu-item" @click="goToGrowth">
         <span class="profile__menu-icon"><IconSet name="growth" size="32rpx" /></span>
         <span class="profile__menu-text">成长档案</span>
@@ -44,19 +54,14 @@
         <span class="profile__menu-text">我的收藏</span>
         <span class="profile__menu-arrow">›</span>
       </div>
-      <div class="profile__menu-item" @click="goToReports">
+      <div class="profile__menu-item" @click="goToPractices">
         <span class="profile__menu-icon"><IconSet name="target" size="32rpx" /></span>
-        <span class="profile__menu-text">我的练习</span>
+        <span class="profile__menu-text">我的训练 <small>进度与成绩</small></span>
         <span class="profile__menu-arrow">›</span>
       </div>
       <div class="profile__menu-item" @click="goToReports">
         <span class="profile__menu-icon"><IconSet name="clipboard" size="32rpx" /></span>
-        <span class="profile__menu-text">我的报告</span>
-        <span class="profile__menu-arrow">›</span>
-      </div>
-      <div class="profile__menu-item" @click="toggleNotifications">
-        <span class="profile__menu-icon"><IconSet name="bell" size="32rpx" /></span>
-        <span class="profile__menu-text">站内提醒 <small>{{ notificationsEnabled ? '已开启' : '已关闭' }}</small></span>
+        <span class="profile__menu-text">我的报告 <small>正式评估档案</small></span>
         <span class="profile__menu-arrow">›</span>
       </div>
       <div class="profile__menu-item" @click="showAbout">
@@ -67,7 +72,7 @@
     </div>
 
     <!-- 易班绑定状态 -->
-    <div class="profile__yiban" @click="showYibanStatus">
+    <div v-if="showYiban" class="profile__yiban" @click="showYibanStatus">
       <div class="profile__yiban-left">
         <span class="profile__yiban-icon">易</span>
         <div>
@@ -75,7 +80,7 @@
           <span class="profile__yiban-status">{{ yibanStatus?.bound ? '已绑定' : yibanStatus?.message || '状态加载中' }}</span>
         </div>
       </div>
-      <span class="profile__yiban-action">{{ yibanStatus?.available ? '去绑定 ›' : '不可用' }}</span>
+      <span class="profile__yiban-action">{{ yibanStatus?.bound || profile?.features?.yiban_bound ? '已绑定' : '去绑定 ›' }}</span>
     </div>
 
     <!-- 退出登录 -->
@@ -90,26 +95,35 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { computed, ref, onMounted } from 'vue'
 import { userApi, type UserInfo } from '@/api/user'
 import IconSet from '@/components/common/IconSet.vue'
 import defaultAvatar from '@/static/images/icons/default-avatar.png'
 
 const profile = ref<UserInfo | null>(null)
+const effectiveCompletions = computed(() => {
+  const growth = profile.value?.growth
+  return growth ? growth.total_interviews + growth.total_debates + growth.total_history_scenarios + growth.total_tours : 0
+})
 const yibanStatus = ref<Awaited<ReturnType<typeof userApi.getYibanStatus>> | null>(null)
 const editing = ref(false)
-const notificationsEnabled = ref(uni.getStorageSync('in_app_notifications') !== 'off')
+const showYiban = computed(() => Boolean(profile.value?.features?.yiban_binding_available || profile.value?.features?.yiban_bound))
 const editForm = ref({ nickname:'', school:'', college:'', political_status:'' })
 onMounted(async () => {
-  try { [profile.value, yibanStatus.value] = await Promise.all([userApi.getProfile(), userApi.getYibanStatus()]) } catch (error) { console.error(error) }
+  try {
+    profile.value = await userApi.getProfile()
+    if (showYiban.value) yibanStatus.value = await userApi.getYibanStatus()
+  } catch (error) { console.error(error) }
 })
 
 function goToGrowth() { uni.navigateTo({ url: '/pages/community/growth' }) }
 function goToKnowledgeFavorites() { uni.navigateTo({ url: '/pages/knowledge/favorites' }) }
+function goToPractices() { uni.navigateTo({ url: '/pages/community/practices' }) }
 function goToReports() { uni.navigateTo({ url: '/pages/community/reports' }) }
+function goToMyCommunity() { uni.navigateTo({ url: '/pages/community/my-community' }) }
+function goToNotifications() { uni.navigateTo({ url: '/pages/community/notifications' }) }
 function openEditor(){ if(!profile.value)return; editForm.value={nickname:profile.value.nickname||'',school:profile.value.school||'',college:profile.value.college||'',political_status:profile.value.political_status||''};editing.value=true }
 async function saveProfile(){try{profile.value=await userApi.updateProfile(editForm.value as any);editing.value=false;uni.showToast({title:'资料已更新',icon:'success'})}catch(error:any){uni.showToast({title:error.message||'保存失败',icon:'none'})}}
-function toggleNotifications(){notificationsEnabled.value=!notificationsEnabled.value;uni.setStorageSync('in_app_notifications',notificationsEnabled.value?'on':'off');uni.showToast({title:notificationsEnabled.value?'已开启站内提醒':'已关闭站内提醒',icon:'none'})}
 function showAbout(){uni.showModal({title:'关于思政情景工坊',content:'版本 1.0.0\n提供谈话训练、党史情景、红色研学、思政辩论、知识库和成长社区功能。AI 内容仅作学习辅助，重要事实请以权威资料为准。',showCancel:false})}
 function showYibanStatus(){uni.showModal({title:'易班账号',content:yibanStatus.value?.message||'状态暂不可用',showCancel:false})}
 
@@ -182,4 +196,10 @@ function handleLogout() {
 .profile__header{position:relative;padding:50rpx 32rpx 55rpx;background:#431a18}.profile__folio{display:flex;justify-content:space-between;width:100%;margin-bottom:34rpx;font-size:15rpx;letter-spacing:3rpx;color:#e7c981}.profile__avatar{width:112rpx;height:112rpx;border:5rpx double rgba(231,201,129,.68)}.profile__name{font:700 35rpx var(--font-display)}.profile__school{font-size:21rpx;color:rgba(255,255,255,.58)}.profile__political-text{border:1px solid rgba(231,201,129,.45);border-radius:2rpx;background:transparent;color:#e7c981;font-size:18rpx;letter-spacing:2rpx}.profile__edit{border-radius:2rpx;border-color:rgba(255,255,255,.24);font-size:19rpx;color:rgba(255,255,255,.72)}
 .profile__stats{margin-top:-25rpx;border:1px solid rgba(72,25,22,.12);border-left:1px solid rgba(72,25,22,.12);border-radius:2rpx;box-shadow:0 9rpx 26rpx rgba(45,31,23,.1)}.profile__stat{border-right:1px solid rgba(72,25,22,.09)}.profile__stat:last-child{border:0}.profile__stat-value{font:700 29rpx var(--font-display);color:var(--color-primary)}.profile__stat-label{font-size:17rpx}
 .profile__menu,.profile__yiban,.profile__logout{border:1px solid rgba(72,25,22,.11);border-left:1px solid rgba(72,25,22,.11);border-radius:2rpx;box-shadow:0 7rpx 22rpx rgba(48,32,22,.05)}.profile__menu-item{padding:24rpx 27rpx}.profile__menu-icon{display:grid;place-items:center;width:48rpx;height:48rpx;margin-right:17rpx;border:1px solid rgba(72,25,22,.1);color:var(--color-primary)}.profile__menu-text{font-size:23rpx}.profile__yiban-icon{display:grid;place-items:center;width:48rpx;height:48rpx;border-radius:50%;background:#2f5d91;color:white;font:700 20rpx var(--font-display)}.profile__logout{color:var(--color-primary);background:transparent}
+/* #ifndef H5 */
+@media (min-width: 769px){.profile{display:grid;grid-template-columns:360px minmax(0,1fr);grid-template-rows:auto auto auto auto;align-content:start;gap:20px;padding:32px;box-sizing:border-box}.profile__header{grid-column:1;grid-row:1/5;min-height:520px;box-sizing:border-box;justify-content:center}.profile__folio{position:absolute;left:28px;right:28px;top:28px;width:auto}.profile__stats{grid-column:2;grid-row:1;margin:0;padding:22px}.profile__menu{grid-column:2;grid-row:2;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin:0}.profile__menu-item:nth-child(odd){border-right:1px solid var(--color-border)}.profile__yiban{grid-column:2;grid-row:3;margin:0}.profile__logout{grid-column:2;grid-row:4;margin:0}.profile__dialog{align-items:center;justify-content:center}.profile__dialog section{width:min(560px,calc(100vw - 48px));border-radius:4px}}
+/* #endif */
+/* #ifdef H5 */
+@container (min-width: 769px){.profile{display:grid;grid-template-columns:360px minmax(0,1fr);grid-template-rows:auto auto auto auto;align-content:start;gap:20px;padding:32px;box-sizing:border-box}.profile__header{grid-column:1;grid-row:1/5;min-height:520px;box-sizing:border-box;justify-content:center}.profile__folio{position:absolute;left:28px;right:28px;top:28px;width:auto}.profile__stats{grid-column:2;grid-row:1;margin:0;padding:22px}.profile__menu{grid-column:2;grid-row:2;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin:0}.profile__menu-item:nth-child(odd){border-right:1px solid var(--color-border)}.profile__yiban{grid-column:2;grid-row:3;margin:0}.profile__logout{grid-column:2;grid-row:4;margin:0}.profile__dialog{align-items:center;justify-content:center}.profile__dialog section{width:min(560px,calc(100vw - 48px));border-radius:4px}}
+/* #endif */
 </style>

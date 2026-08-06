@@ -1,22 +1,32 @@
 <template>
   <!-- #ifdef H5 -->
-  <div class="app-shell">
-    <div class="phone-frame" :class="{ 'phone-frame--immersive': route.meta.immersive }">
+  <div class="app-shell" :class="{ 'app-shell--bare': route.meta.immersive || route.path === '/pages/login/login', 'app-shell--locked': route.meta.lockViewport }">
+    <div class="app-frame" :class="{ 'app-frame--immersive': route.meta.immersive, 'app-frame--locked': route.meta.lockViewport }">
       <NavBar
         v-if="!route.meta.hideNav"
         :title="String(route.meta.title || '思政情景工坊')"
         :showBack="route.meta.tab === undefined && route.path !== '/pages/index/index' && route.path !== '/pages/login/login'"
         :statusBarHeight="0"
+        :root="route.meta.tab !== undefined"
       />
-      <div class="page-content" :class="{ 'has-tab': !route.meta.hideTab }">
+      <div
+        class="page-content"
+        :class="{
+          'has-tab': !route.meta.hideTab,
+          'page-content--locked': route.meta.lockViewport,
+          [`page-content--${String(route.meta.layout || 'dashboard')}`]: !route.meta.immersive,
+        }"
+      >
         <router-view v-slot="{ Component }">
           <Transition name="page" mode="out-in">
             <component :is="Component" />
           </Transition>
         </router-view>
       </div>
-      <TabBar v-if="!route.meta.hideTab" />
     </div>
+    <!-- TabBar 放在 .app-frame 之外：.app-frame 的 container-type 会让 fixed 定位
+         相对容器而不是视口，导致滚动时长内容 TabBar 被带着滚出屏幕。 -->
+    <TabBar v-if="!route.meta.hideTab" />
   </div>
   <!-- #endif -->
   <!-- #ifndef H5 -->
@@ -55,6 +65,11 @@ const route = useRoute()
   --shadow-card-hover: 0 18rpx 48rpx rgba(68, 48, 30, .12);
   --page-gutter: 28rpx;
   --tabbar-space: 116rpx;
+  --desktop-dashboard: 1180px;
+  --desktop-workspace: 1280px;
+  --desktop-reading: 800px;
+  --page-title-size: clamp(30px, 2.5vw, 38px);
+  --section-title-size: clamp(21px, 2vw, 28px);
 }
 
 page, body, #app { margin: 0; padding: 0; width: 100%; min-height: 100vh; }
@@ -68,18 +83,14 @@ body {
   background: #d9d1c4;
 }
 
-.app-shell { width: 100%; min-height: 100vh; display: flex; justify-content: center; background: radial-gradient(circle at 50% -10%, #eee8dc, #d7cec0 58%, #cbc0b1); }
-.phone-frame { width: 100%; max-width: 480px; min-height: 100vh; position: relative; overflow-x: hidden; background: var(--color-bg); box-shadow: 0 0 80px rgba(50, 33, 21, .2); }
-.phone-frame--immersive { max-width: none; height: 100vh; overflow: hidden; background: #0d100e; box-shadow: none; }
-.phone-frame--immersive::before { display: none; }
-.phone-frame--immersive .page-content { height: 100vh; overflow: hidden; }
-.phone-frame::before {
-  content: ''; position: fixed; inset: 0; left: 50%; transform: translateX(-50%); z-index: 0;
-  width: 100%; max-width: 480px; pointer-events: none; opacity: .48;
-  background-image: linear-gradient(rgba(127,33,29,.018) 1px, transparent 1px), linear-gradient(90deg, rgba(127,33,29,.014) 1px, transparent 1px);
-  background-size: 24px 24px;
-}
+.app-shell { width: 100%; min-height: 100vh; display:flex;justify-content:center;background: radial-gradient(circle at 50% -10%, #eee8dc, #d7cec0 58%, #cbc0b1); }
+.app-frame { container-type:inline-size;width: 100%; max-width:480px;min-height: 100vh; position: relative; overflow-x: hidden; background: var(--color-bg);box-shadow:0 0 80px rgba(50,33,21,.18); }
+.app-shell--locked,.app-frame--locked{height:100dvh;min-height:0;overflow:hidden}
+.app-frame--immersive { max-width:none;height: 100vh; overflow: hidden; background: #0d100e;box-shadow:none; }
+.app-frame--immersive .page-content { height: 100vh; overflow: hidden; max-width:none; }
 .page-content { min-height: 100vh; position: relative; z-index: 1; background: transparent; }
+.page-content--locked{height:calc(100dvh - 92rpx);min-height:0;overflow:hidden}
+.page-content--dashboard,.page-content--workspace,.page-content--reading{width:100%;max-width:none;margin:0 auto;background:var(--color-bg);box-sizing:border-box}
 .page-content.has-tab { padding-bottom: var(--tabbar-space); }
 
 h1, h2, h3, .section-title { font-family: var(--font-display); }
@@ -119,12 +130,15 @@ textarea { min-height: 90rpx; resize: vertical; }
 .search-input { width: 100%; }
 .gold-dot { display: inline-block; width: 7rpx; height: 7rpx; margin: 0 8rpx; border-radius: 50%; background: var(--color-accent); vertical-align: middle; }
 
-.page-enter-active { transition: opacity .26s ease, transform .32s cubic-bezier(.16,1,.3,1); }
+.page-enter-active { transition: opacity .22s ease; }
 .page-leave-active { transition: opacity .12s ease; }
-.page-enter-from { opacity: 0; transform: translateY(10px); }
+.page-enter-from { opacity: 0; }
 .page-leave-to { opacity: 0; }
 .fade-enter-active, .fade-leave-active { transition: opacity .2s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 
+/* #ifdef H5 */
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { scroll-behavior: auto!important; transition-duration: .01ms!important; animation-duration: .01ms!important; } }
+@media(max-width:480px){.app-frame{max-width:none;box-shadow:none}}
+/* #endif */
 </style>

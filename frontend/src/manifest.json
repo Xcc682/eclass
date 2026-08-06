@@ -9,7 +9,6 @@
     "uploadFile": 120000,
     "downloadFile": 120000
   },
-  "usingComponents": true,
   "uniStatistics": {
     "enable": false
   },

@@ -14,7 +14,7 @@ class Settings(BaseSettings):
     VECTOR_DATABASE_URL: Optional[str] = None
 
     # Redis
-    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_URL: str = "redis://127.0.0.1:6379/0"
 
     # JWT
     JWT_SECRET_KEY: str = ""
@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     # LLM
     LLM_API_KEY: Optional[str] = None
     LLM_API_BASE: str = "https://api.deepseek.com"
-    LLM_MODEL: str = "deepseek-chat"
+    LLM_MODEL: str = "deepseek-v4-flash"
     EMBEDDING_MODEL: str = "BAAI/bge-small-zh-v1.5"
     EMBEDDING_DIMENSION: int = 512
     VECTOR_MAX_COSINE_DISTANCE: float = 0.55
@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     # Knowledge base
     KNOWLEDGE_STORAGE_DIR: str = "storage/knowledge"
     KNOWLEDGE_MAX_UPLOAD_MB: int = 20
+    COMMUNITY_STORAGE_DIR: str = "storage/community"
+    COMMUNITY_SENSITIVE_TERMS: str = ""
     ADMIN_PHONES: str = ""
     TEACHER_PHONES: str = ""
 
@@ -60,7 +62,7 @@ class Settings(BaseSettings):
     # Server
     HOST: str = "0.0.0.0"
     PORT: int = 8000
-    CORS_ORIGINS: str = "http://localhost:5667,http://127.0.0.1:5667"
+    CORS_ORIGINS: str = "http://127.0.0.1:5667,http://127.0.0.1:5173"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
