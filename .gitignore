@@ -22,3 +22,16 @@ _backup/
 .claude/
 需求文档_temp.txt
 test_hist.txt
+
+# Local exports and diagnostics. Keep hand-authored deliverables visible to Git.
+/output/*.pid
+/output/playwright/
+/output/immersive-audit/
+/output/migration-*/
+/output/migration-*.zip
+/output/backend-storage-*/
+/output/backend-storage-*.zip
+/output/huggingface-cache-*/
+/output/huggingface-cache-*.zip
+/output/huggingface-cache-*.tar.gz
+/backend/tests/_community_storage/

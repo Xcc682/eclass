@@ -65,64 +65,36 @@ AI 扮演党委组织委员，模拟完整入党谈话流程（积极分子→�
 
 ## 📁 项目结构
 
-```
-f:/eclass/
-├── frontend/                          # 前端项目
+```text
+eclass/
+├── frontend/                         # uni-app 前端与 H5 容器配置
 │   ├── src/
-│   │   ├── pages/                     # 26 个页面
-│   │   │   ├── index/                 # 首页工作台
-│   │   │   ├── login/                 # 登录
-│   │   │   ├── interview/             # 谈话模块（3页）
-│   │   │   ├── history/               # 党史（2页）
-│   │   │   ├── tour/                  # 研学（3页）
-│   │   │   ├── debate/                # 辩论（3页）
-│   │   │   ├── knowledge/             # 知识库（6页）
-│   │   │   └── community/             # 社区（7页）
-│   │   ├── components/                # 12 个通用组件
-│   │   │   ├── common/                # Card, Badge, Avatar, Loading...
-│   │   │   ├── chat/                  # ChatBubble, ChatInput
-│   │   │   ├── layout/                # NavBar, TabBar, PageLayout
-│   │   │   └── radar/                 # RadarChart 雷达图
-│   │   ├── api/                       # API 调用层（8个模块）
-│   │   ├── utils/                     # 工具函数
-│   │   │   ├── uni-polyfill.ts        # uni-app H5 兼容层
-│   │   │   ├── rpx-plugin.ts          # rpx→rem 转换 Vite 插件
-│   │   │   └── constants.ts           # 全局常量
-│   │   ├── store/                     # Pinia 状态管理
-│   │   └── shims/                     # uni-app API 适配层
-│   ├── index.html
-│   ├── vite.config.ts
-│   └── package.json
-│
-├── backend/                           # FastAPI 后端
+│   │   ├── pages/                     # 按业务模块组织页面
+│   │   ├── components/                # 通用组件
+│   │   ├── api/                        # 后端接口调用
+│   │   └── store/                      # Pinia 状态管理
+│   └── scripts/                       # 前端素材构建工具
+├── backend/                          # FastAPI 后端与 Python 依赖
 │   ├── app/
-│   │   ├── main.py                    # 应用入口 + 路由注册
-│   │   ├── config.py                  # 配置管理（Pydantic Settings）
-│   │   ├── database.py                # SQLAlchemy + SQLite/PostgreSQL
-│   │   ├── security.py                # JWT 认证 + 密码哈希
-│   │   ├── routers/                   # 8 个 API 路由模块
-│   │   │   ├── auth.py                # 登录/注册/JWT
-│   │   │   ├── users.py               # 用户资料/成长
-│   │   │   ├── interviews.py          # 入党谈话（含对话上下文管理）
-│   │   │   ├── history.py             # 党史情景
-│   │   │   ├── tours.py               # 红色研学
-│   │   │   ├── debates.py             # 辩论赛
-│   │   │   ├── knowledge.py           # 知识库（上传/检索/问答/收藏/模板）
-│   │   │   └── community.py           # 社区帖子/回复/点赞/任务
-│   │   ├── models/                    # 8 个 SQLAlchemy 数据模型
-│   │   ├── services/
-│   │   │   ├── ai_service.py          # DeepSeek API 调用 + 智能体编排
-│   │   │   └── knowledge_service.py   # 文档解析 + 分块 + FTS5 + 向量索引
-│   │   └── seed.py                    # 种子数据
-│   ├── storage/knowledge/             # 知识库上传文件存储
-│   ├── requirements.txt
-│   └── Dockerfile
-│
-├── docker-compose.yml                 # pgvector + Redis 容器编排
-├── .env.example                       # 环境变量模板
-├── scripts/                           # 工具脚本
-└── docs/                              # 文档
+│   │   ├── main.py                     # 应用入口与路由注册
+│   │   ├── routers/                    # API 路由
+│   │   ├── services/                   # AI、知识检索等业务服务
+│   │   ├── models/                     # SQLAlchemy 数据模型
+│   │   └── seed.py                     # 应用启动时使用的种子数据
+│   ├── migrations/                    # Alembic 数据库迁移
+│   ├── scripts/                       # 索引、媒体和数据库维护工具
+│   ├── storage/                       # 上传文件与运行时媒体
+│   └── tests/                         # 自动化测试
+├── scripts/                          # 从项目根目录使用的独立运维工具
+├── docs/                             # 知识库与沉浸式媒体说明
+├── DEPLOYMENT.md                     # Linux 部署说明
+├── docker-compose.yml                # 本地开发基础服务
+├── docker-compose.quick.yml          # 试用与演示环境部署
+├── docker-compose.production.yml     # 正式环境部署
+└── .env.production.example          # 正式部署环境变量模板
 ```
+
+`output/` 用于存放本地交付材料与导出文件。旧迁移包、浏览器测试产物和日志可以归档到 Git 忽略的 `_backup/`。
 
 ---
 
@@ -138,21 +110,21 @@ f:/eclass/
 ### 快速启动
 
 ```bash
-# 1. 克隆项目
-cd f:/eclass
-
-# 2. 配置环境变量
-cp .env.example .env
-# 编辑 .env，填入 LLM_API_KEY（DeepSeek API Key）
-
-# 3. 启动后端
+# 从项目根目录进入后端。已有 .env 时跳过复制。
 cd backend
+cp .env.example .env
+# Windows PowerShell 可使用 Copy-Item .env.example .env
+# 编辑当前目录下的 .env，填写 JWT_SECRET_KEY 和 LLM_API_KEY。
+# 如需纯 SQLite 开发，将两个 DATABASE_URL 值都设为 sqlite:///./dev.db，
+# 并清空 VECTOR_DATABASE_URL。
 pip install -r requirements.txt
 python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
 
-# 4. 启动前端（新开终端）
+```bash
+# 新开终端，从项目根目录进入前端
 cd frontend
-npm install
+npm ci
 npm run dev:h5
 ```
 
@@ -160,8 +132,7 @@ npm run dev:h5
 
 ```bash
 # 启动 pgvector、Redis 与 MinIO（Docker Desktop 需运行）
-# FastAPI 仍按上面的命令在 Windows 本机运行，并读取 backend/dev.db。
-cd f:/eclass
+# 从项目根目录运行。FastAPI 使用 backend/.env 中配置的数据库。
 docker compose up -d
 
 # 验证
@@ -171,6 +142,8 @@ docker ps
 # 仅在明确测试完整容器部署时才启动容器后端：
 docker compose --profile container-backend up -d backend
 ```
+
+Linux 服务器的启动与更新命令见 [部署说明](DEPLOYMENT.md)。
 
 ### 小程序编译
 
