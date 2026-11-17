@@ -7,7 +7,10 @@
     "build:h5": "uni build",
     "dev:mp-weixin": "uni -p mp-weixin",
     "build:mp-weixin": "uni build -p mp-weixin",
-    "type-check": "vue-tsc --noEmit"
+    "type-check": "vue-tsc --noEmit",
+    "lint": "vue-tsc --noEmit",
+    "format": "prettier --write \"src/**/*.{ts,vue,json}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,vue,json}\""
   },
   "dependencies": {
     "@vue/compiler-sfc": "3.4.21",
@@ -25,6 +28,7 @@
     "@dcloudio/uni-mp-weixin": "3.0.0-alpha-5010320260611001",
     "@dcloudio/vite-plugin-uni": "3.0.0-alpha-5010320260611001",
     "@types/node": "^20.0.0",
+    "prettier": "^3.10.1",
     "sass": "^1.101.0",
     "typescript": "^5.3.0",
     "vue-tsc": "^2.0.0"

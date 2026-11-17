@@ -1,0 +1,65 @@
+# 后端工程化配置
+# 说明：本项目此前没有任何静态检查配置。此文件补齐 ruff / mypy / pytest 三项，
+# 使 `ruff check app`、`pytest`、`mypy app` 无需额外参数即可运行。
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sixiang-qingjing-gongfang-backend"
+version = "1.0.0"
+description = "思政情景工坊后端服务：入党谈话训练、党史情景、红色研学、思政辩论、成长社区、知识库 RAG"
+requires-python = ">=3.11"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 120
+exclude = [
+    ".venv",
+    "__pycache__",
+    "migrations",
+    "storage",
+    "backups",
+]
+
+[tool.ruff.lint]
+# E/F 为错误类规则（必过）；I 排序、UP 现代语法、B 常见陷阱、SIM 可简化代码。
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = [
+    # E501 行宽由 formatter 负责，不作为 lint 错误阻断构建。
+    "E501",
+    # B008 是 FastAPI 的 Depends()/File() 惯用法，不视为问题。
+    "B008",
+    # SIM108 三元表达式在业务代码中常降低可读性。
+    "SIM108",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+combine-as-imports = true
+force-wrap-aliases = true
+
+[tool.ruff.lint.per-file-ignores]
+# __init__.py 中的导入是刻意的再导出（Alembic 模型注册、路由注册），
+# 这些名字不参与本文件的后续计算，因此豁免 F401。
+"__init__.py" = ["F401"]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+exclude = ["migrations/", "storage/", "backups/"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+# 测试自带 test_env 夹具做数据库隔离，这里只统一入口。
+addopts = "-q --strict-markers"
