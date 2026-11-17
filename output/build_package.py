@@ -6,11 +6,12 @@
 """
 from __future__ import annotations
 
+import sys
 import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = ROOT / "output" / "思政情景工坊_参赛作品.zip"
+OUT = Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "output" / "思政情景工坊_参赛作品.zip"
 
 # 需要收录的顶层条目
 INCLUDE_DIRS = ["backend", "frontend", "docs", "scripts", ".github"]

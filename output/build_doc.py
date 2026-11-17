@@ -583,15 +583,15 @@ def build(screenshot_dir: Path | None) -> None:
     # 正文默认样式
     normal = document.styles["Normal"]
     style_font(normal, BODY_LATIN, BODY_CJK, size=10.5)
-    normal.paragraph_format.line_spacing = 1.5
-    normal.paragraph_format.space_after = Pt(6)
+    normal.paragraph_format.line_spacing = 1.25
+    normal.paragraph_format.space_after = Pt(3)
 
     for style_name, size in (("Heading 1", 18), ("Heading 2", 15), ("Heading 3", 13), ("Heading 4", 11.5)):
         style = document.styles[style_name]
         style_font(style, HEADING_LATIN, HEADING_CJK, size=size, bold=True)
         style.font.color.rgb = RGBColor(0x1A, 0x1A, 0x1A)
-        style.paragraph_format.space_before = Pt(12)
-        style.paragraph_format.space_after = Pt(6)
+        style.paragraph_format.space_before = Pt(9)
+        style.paragraph_format.space_after = Pt(4)
 
     # 列表样式必须显式指定字体，否则 Word 会用默认字体，出现中英混排不统一
     for style_name in ("List Bullet", "List Number"):
@@ -600,7 +600,7 @@ def build(screenshot_dir: Path | None) -> None:
         except KeyError:
             continue
         style_font(style, BODY_LATIN, BODY_CJK, size=10.5, bold=False)
-        style.paragraph_format.line_spacing = 1.4
+        style.paragraph_format.line_spacing = 1.22
 
     # 目录域生成的三级样式：压紧行距，避免目录占满三页
     for style_name in ("TOC 1", "TOC 2", "TOC 3", "TOC1", "TOC2", "TOC3"):
