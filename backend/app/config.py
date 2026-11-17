@@ -42,6 +42,27 @@ class Settings(BaseSettings):
     # 多模态：对话可附带图片（data URL），数量与体积在这里收敛
     VISION_MAX_IMAGES: int = 2
     VISION_MAX_IMAGE_CHARS: int = 8_000_000
+    # LLM 网关：快模型承担意图路由、查询改写、重排与引用核验；
+    # 熔断与额度限制上游故障与滥用的影响面
+    LLM_MODEL_FAST: str = "deepseek-v4-flash"
+    LLM_CIRCUIT_FAIL_THRESHOLD: int = 5
+    LLM_CIRCUIT_COOLDOWN_SECONDS: float = 30.0
+    AI_DAILY_TOKEN_BUDGET: int = 300_000
+    # RAG 进阶：多查询改写、LLM 重排、语义缓存与引用核验
+    RETRIEVAL_MULTI_QUERY_ENABLED: bool = True
+    RETRIEVAL_MULTI_QUERY_COUNT: int = 2
+    RETRIEVAL_EXPAND_TIMEOUT_SECONDS: float = 5.0
+    # 列表重排在自建评测集上只有 ±1 题的波动且每次多 1 到 2 秒，默认关闭按需开启
+    RETRIEVAL_RERANK_ENABLED: bool = False
+    RETRIEVAL_RERANK_TIMEOUT_SECONDS: float = 6.0
+    RETRIEVAL_ORIGINAL_QUERY_WEIGHT: float = 2.0
+    SEMANTIC_CACHE_ENABLED: bool = True
+    SEMANTIC_CACHE_THRESHOLD: float = 0.93
+    SEMANTIC_CACHE_TTL_SECONDS: int = 3600
+    SEMANTIC_CACHE_MAX_ITEMS: int = 200
+    GROUNDING_CHECK_ENABLED: bool = True
+    GROUNDING_TIMEOUT_SECONDS: float = 8.0
+    REPORT_REFINE_ENABLED: bool = True
     # Debate turns can contain a long transcript. Bound the prompt independently
     # from the stored session and allow slightly more time to generate a reply.
     DEBATE_LLM_TIMEOUT_SECONDS: float = 60.0

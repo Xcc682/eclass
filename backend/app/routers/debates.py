@@ -15,7 +15,7 @@ from app.models.debate import DebateMessage, DebatePracticeRecord, DebateTopic
 from app.models.domain import GeneratedReport
 from app.models.knowledge import KnowledgeChunk, KnowledgeDocument
 from app.models.user import User
-from app.security import get_current_user
+from app.security import get_ai_user, get_current_user
 from app.services import safety, vision
 from app.services.ai_service import ai_service, validate_debate_feedback, validate_debate_turn, validate_topics
 from app.services.knowledge_service import retrieve
@@ -221,7 +221,7 @@ def get_topics(user: User = Depends(get_current_user), db: Session = Depends(get
 
 
 @router.post("/topics/generate")
-async def generate_topics(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def generate_topics(user: User = Depends(get_ai_user), db: Session = Depends(get_db)):
     try:
         generated = validate_topics(await ai_service.debate_generate_topics())
     except Exception as exc:
@@ -241,7 +241,7 @@ async def generate_topics(user: User = Depends(get_current_user), db: Session = 
 
 
 @router.post("/practice/start")
-async def start_debate(data: StartRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def start_debate(data: StartRequest, user: User = Depends(get_ai_user), db: Session = Depends(get_db)):
     topic = db.get(DebateTopic, data.topic_id)
     if not topic:
         raise HTTPException(status_code=404, detail="辩题不存在")
@@ -316,7 +316,7 @@ def search_evidence(session_id: str, data: EvidenceSearchRequest, user: User = D
 
 
 @router.post("/practice/{session_id}/argue")
-async def submit_argument(session_id: str, data: ArgumentRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def submit_argument(session_id: str, data: ArgumentRequest, user: User = Depends(get_ai_user), db: Session = Depends(get_db)):
     verdict = safety.check_input(data.argument)
     if not verdict.allowed:
         raise HTTPException(status_code=400, detail=verdict.reason)
@@ -433,7 +433,7 @@ async def submit_argument(session_id: str, data: ArgumentRequest, user: User = D
 
 
 @router.post("/practice/{session_id}/end")
-async def end_debate(session_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def end_debate(session_id: str, user: User = Depends(get_ai_user), db: Session = Depends(get_db)):
     record = owned(db, session_id, user)
     if record.feedback_json:
         return {"code": 0, "data": _json(record.feedback_json, {})}

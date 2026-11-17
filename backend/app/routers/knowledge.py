@@ -30,8 +30,8 @@ from app.models.knowledge import (
     KnowledgeView,
 )
 from app.models.user import User
-from app.security import get_current_user, require_role
-from app.services import knowledge_agent, safety, vision
+from app.security import get_ai_user, get_current_user, require_role
+from app.services import grounding, knowledge_agent, retrieval_advanced, safety, semantic_cache, vision
 from app.services.ai_service import ai_service
 from app.services.knowledge_service import (
     ALLOWED_MIME_TYPES,
@@ -448,6 +448,12 @@ def _message_payload(item: KnowledgeMessage) -> dict:
     }
 
 
+def _invalidate_answer_cache(reason: str) -> None:
+    """知识库内容变化后清空语义缓存，避免继续复用指向旧原文的答案。"""
+    semantic_cache.invalidate()
+    logger.info("[knowledge] semantic_cache_invalidated reason=%s", reason)
+
+
 def _storage_dir() -> Path:
     configured = Path(settings.KNOWLEDGE_STORAGE_DIR)
     if not configured.is_absolute():
@@ -669,6 +675,7 @@ def publish_document(doc_id: str, user: User = Depends(content_manager), db: Ses
     document.status = "published"
     document.reviewer_id = user.id
     document.published_at = datetime.utcnow()
+    _invalidate_answer_cache("document_published")
     return {"code": 0, "data": _document_payload(document)}
 
 
@@ -682,6 +689,7 @@ def reject_document(doc_id: str, data: RejectRequest, user: User = Depends(conte
     document.status = "rejected"
     document.reviewer_id = user.id
     document.processing_error = data.reason
+    _invalidate_answer_cache("document_rejected")
     return {"code": 0, "data": _document_payload(document)}
 
 
@@ -708,6 +716,7 @@ def update_document(doc_id: str, data: DocumentUpdateRequest, _: User = Depends(
     document.source_url = data.source_url.strip()
     document.summary = data.summary.strip()
     document.version = data.version
+    _invalidate_answer_cache("document_updated")
     return {"code": 0, "data": _document_payload(document)}
 
 
@@ -744,6 +753,7 @@ def delete_document(doc_id: str, _: User = Depends(content_manager), db: Session
     db.execute(delete(KnowledgeChunk).where(KnowledgeChunk.document_id == document.id))
     db.delete(document)
     db.commit()
+    _invalidate_answer_cache("document_deleted")
 
     file_warning = None
     if file_path and _storage_dir() in file_path.parents and file_path.is_file():
@@ -782,6 +792,7 @@ def reindex_document(doc_id: str, background_tasks: BackgroundTasks, _: User = D
         failure_status,
         False,
     )
+    _invalidate_answer_cache("document_reindexed")
     return {"code": 0, "data": {
         "job_id": job.id,
         "document_id": document.id,
@@ -851,6 +862,9 @@ def _finish_answer(
     started_at: float,
     tool_trace: list[dict] | None = None,
     response_kind: str | None = None,
+    cached: bool = False,
+    grounding_report: dict | None = None,
+    retrieval_trace: dict | None = None,
 ) -> dict:
     """落库并组装问答接口的统一返回结构，固定检索与 Agent 两条链路共用。"""
     normalized = dict(normalized)
@@ -868,6 +882,9 @@ def _finish_answer(
         "selected_tool": selected_tool,
         "degraded": degraded,
         "tool_trace": tool_trace or [],
+        "cached": cached,
+        "grounding": grounding_report or {"status": "skipped"},
+        "retrieval": retrieval_trace or {},
     }
     assistant_message = KnowledgeMessage(
         session_id=session.id, role="assistant", content=normalized["answer"],
@@ -892,13 +909,15 @@ def _finish_answer(
         "follow_up_suggestions": normalized["follow_up_suggestions"],
         "response_kind": answer_meta["response_kind"],
         "selected_tool": selected_tool,
-        "degraded": degraded, "cached": False,
+        "degraded": degraded, "cached": cached,
+        "grounding": answer_meta["grounding"],
+        "retrieval": answer_meta["retrieval"],
         "tool_trace": answer_meta["tool_trace"],
     }}
 
 
 @router.post("/ask")
-async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def ask_knowledge(data: AskRequest, user: User = Depends(get_ai_user), db: Session = Depends(get_db)):
     verdict = safety.check_input(data.question)
     if not verdict.allowed:
         raise HTTPException(status_code=400, detail=verdict.reason)
@@ -973,7 +992,34 @@ async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user)
     db.commit()
 
     history_payload = [{"role": item.role, "content": item.content} for item in history]
+    # 缓存键固定为路由前的检索词：后续 tool_query 会再改写，查与存必须用同一个键
+    cache_key = retrieval_query
+    cache_scope = f"{data.category or ''}|{','.join(sorted(document_ids))}"
+    cached_payload = None
+    if not images and not history_payload:
+        cached_payload = await asyncio.to_thread(semantic_cache.lookup, cache_key, cache_scope)
+    if cached_payload:
+        logger.info("[knowledge] semantic_cache_hit request_id=%s similarity=%s reason=lookup",
+                    submission_id, cached_payload.get("similarity"))
+
+    async def remember(answer: dict, kind: str, report: dict | None, *, personalized: bool = False) -> None:
+        """只缓存带引用、非降级、与本人历史无关的知识库回答，避免固化「资料不足」与跨用户复用。"""
+        if images or personalized or history_payload or degraded or kind != "rag" or not answer.get("citations"):
+            return
+        if (report or {}).get("status") in {"degraded", "unverified"}:
+            return
+        await asyncio.to_thread(semantic_cache.store, cache_key, {
+            "normalized": answer, "kind": kind, "grounding": report,
+        }, cache_scope)
+
     degraded = False
+    if cached_payload:
+        return _finish_answer(
+            db=db, session=session, user_message=user_message, submission_id=submission_id,
+            normalized=cached_payload["normalized"], degraded=False, selected_tool="search_knowledge",
+            started_at=started_at, response_kind=cached_payload.get("kind") or "rag", cached=True,
+            grounding_report=cached_payload.get("grounding"), retrieval_trace={"cache": "hit"},
+        )
     selected_tool = "search_knowledge"
     tool_call: dict = {
         "name": "search_knowledge",
@@ -1004,6 +1050,8 @@ async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user)
 
     citations: list[dict] = []
     contexts: list[dict] = []
+    grounding_report: dict = {"status": "skipped"}
+    retrieval_trace: dict = {}
     if selected_tool == "describe_assistant":
         normalized = _assistant_intro(str(tool_call.get("arguments", {}).get("topic", "identity")))
         response_kind = "assistant_intro"
@@ -1062,10 +1110,24 @@ async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user)
                         "answer": "当前知识库没有足够依据。你可以换一种更具体的问法，或先在资料库中搜索相关文件。",
                         "answer_blocks": [], "citations": [], "used_citation_indexes": [], "follow_up_suggestions": [],
                     }
+                grounding_report = {"status": "skipped"}
+                if agent_answer["citations"]:
+                    try:
+                        agent_answer, grounding_report = await grounding.verify(
+                            ai_service, agent_answer, data.question,
+                        )
+                    except Exception as exc:
+                        logger.warning("[knowledge] grounding_failed request_id=%s error=%s",
+                                       submission_id, exc.__class__.__name__)
+                await remember(agent_answer, agent_kind, grounding_report,
+                               personalized=used_learner_tools)
+                remember(agent_answer, agent_kind, grounding_report)
                 return _finish_answer(
                     db=db, session=session, user_message=user_message, submission_id=submission_id,
                     normalized=agent_answer, degraded=False, selected_tool="search_knowledge",
                     started_at=started_at, tool_trace=agent_result.trace, response_kind=agent_kind,
+                    grounding_report=grounding_report,
+                    retrieval_trace={"mode": "agent", "steps": agent_result.steps},
                 )
             except HTTPException:
                 raise
@@ -1077,17 +1139,27 @@ async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user)
                 )
 
         retrieval_started_at = time.perf_counter()
+        retrieval_trace: dict = {}
         try:
-            contexts = await asyncio.wait_for(
-                retrieve_async(retrieval_query, data.category, limit=6, use_vector=True, document_ids=document_ids),
+            # 多查询改写 + RRF 融合 + 列表重排；增强失败时内部自动退回单查询
+            contexts, retrieval_trace = await asyncio.wait_for(
+                retrieval_advanced.search(
+                    retrieve_async, ai_service, retrieval_query,
+                    category=data.category, limit=6, document_ids=document_ids,
+                ),
                 timeout=settings.KNOWLEDGE_RETRIEVAL_TIMEOUT_SECONDS,
             )
         except TimeoutError:
             logger.warning("[knowledge] vector_retrieval_timeout request_id=%s fallback=keyword_only", submission_id)
             degraded = True
+            retrieval_trace = {"degraded": True, "reason": "timeout"}
             try:
-                contexts = await asyncio.wait_for(
-                    retrieve_async(retrieval_query, data.category, limit=6, use_vector=False, document_ids=document_ids),
+                contexts, _ = await asyncio.wait_for(
+                    retrieval_advanced.search(
+                        retrieve_async, ai_service, retrieval_query,
+                        category=data.category, limit=6, document_ids=document_ids,
+                        use_vector=False, expand=False, rerank_enabled=False,
+                    ),
                     timeout=settings.KNOWLEDGE_KEYWORD_FALLBACK_TIMEOUT_SECONDS,
                 )
             except Exception as exc:
@@ -1099,9 +1171,14 @@ async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user)
         except Exception as exc:
             logger.warning("[knowledge] hybrid_retrieval_failed request_id=%s fallback=keyword_only error=%s", submission_id, exc.__class__.__name__)
             degraded = True
+            retrieval_trace = {"degraded": True, "reason": exc.__class__.__name__}
             try:
-                contexts = await asyncio.wait_for(
-                    retrieve_async(retrieval_query, data.category, limit=6, use_vector=False, document_ids=document_ids),
+                contexts, _ = await asyncio.wait_for(
+                    retrieval_advanced.search(
+                        retrieve_async, ai_service, retrieval_query,
+                        category=data.category, limit=6, document_ids=document_ids,
+                        use_vector=False, expand=False, rerank_enabled=False,
+                    ),
                     timeout=settings.KNOWLEDGE_KEYWORD_FALLBACK_TIMEOUT_SECONDS,
                 )
             except Exception as fallback_exc:
@@ -1154,6 +1231,15 @@ async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user)
                     # 只有图片、没有命中资料：输出图片解读，不附引用编号
                     normalized = uncited
                     response_kind = "multimodal"
+            if normalized["citations"]:
+                try:
+                    normalized, grounding_report = await grounding.verify(
+                        ai_service, normalized, data.question,
+                    )
+                except Exception as exc:
+                    logger.warning("[knowledge] grounding_failed request_id=%s error=%s",
+                                   submission_id, exc.__class__.__name__)
+            await remember(normalized, response_kind, grounding_report)
         else:
             normalized = {
                 "answer": "当前知识库没有足够依据。你可以换一种更具体的问法，或先在资料库中搜索相关文件。",
@@ -1164,7 +1250,8 @@ async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user)
     return _finish_answer(
         db=db, session=session, user_message=user_message, submission_id=submission_id,
         normalized=normalized, degraded=degraded, selected_tool=selected_tool, started_at=started_at,
-        response_kind=response_kind,
+        response_kind=response_kind, grounding_report=grounding_report,
+        retrieval_trace=retrieval_trace,
     )
 
 
@@ -1286,7 +1373,7 @@ def get_templates(_: User = Depends(get_current_user), db: Session = Depends(get
 
 
 @router.post("/templates/generate")
-async def generate_template(data: GenerateRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def generate_template(data: GenerateRequest, user: User = Depends(get_ai_user), db: Session = Depends(get_db)):
     template = db.get(KnowledgeTemplate, data.template_id)
     if not template or not template.active:
         raise HTTPException(status_code=404, detail="模板不存在")

@@ -23,5 +23,11 @@ def configure_test_environment() -> None:
     # 自主检索 Agent 会真实调用模型；API 层测试聚焦固定检索链路，Agent 由
     # test_knowledge_agent.py 用假模型单独覆盖。
     os.environ["KNOWLEDGE_AGENT_ENABLED"] = "false"
+    # 多查询改写、LLM 重排、语义缓存与引用核验都会真实调用模型；API 层测试
+    # 默认关闭，相关模块由各自的单元测试用假模型覆盖。
+    os.environ["RETRIEVAL_MULTI_QUERY_ENABLED"] = "false"
+    os.environ["RETRIEVAL_RERANK_ENABLED"] = "false"
+    os.environ["SEMANTIC_CACHE_ENABLED"] = "false"
+    os.environ["GROUNDING_CHECK_ENABLED"] = "false"
     os.environ["COMMUNITY_STORAGE_DIR"] = community_storage.as_posix()
     os.environ.setdefault("JWT_SECRET_KEY", "test-only-secret-key-with-at-least-32-characters")

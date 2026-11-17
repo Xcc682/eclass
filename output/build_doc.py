@@ -283,7 +283,7 @@ def add_image(
         with Image.open(image_path) as im:
             ratio = im.height / im.width
         # 竖长的手机截图不必占满整页高度，留出空间给正文
-        cap_height = max_height_cm if ratio <= 1.5 else min(max_height_cm, 15.5)
+        cap_height = max_height_cm if ratio <= 1.5 else min(max_height_cm, 14.0)
         if ratio * width_cm > cap_height:
             width_cm = cap_height / ratio
     except Exception:
@@ -307,7 +307,7 @@ def add_image(
     run = cap.add_run(caption)
     apply_font(run, BODY_LATIN, BODY_CJK, size=9)
     run.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
-    cap.paragraph_format.space_after = Pt(12)
+    cap.paragraph_format.space_after = Pt(8)
 
 
 
@@ -343,8 +343,8 @@ def add_table(document, rows: list[list[str]], borderless: bool = False) -> None
             cell = table.cell(row_index, col_index)
             cell.text = ""
             paragraph = cell.paragraphs[0]
-            paragraph.paragraph_format.space_before = Pt(2 if borderless else 2)
-            paragraph.paragraph_format.space_after = Pt(2 if borderless else 2)
+            paragraph.paragraph_format.space_before = Pt(1 if borderless else 1)
+            paragraph.paragraph_format.space_after = Pt(1 if borderless else 1)
             if borderless:
                 paragraph.paragraph_format.line_spacing = 1.9
             run = paragraph.add_run()
@@ -572,26 +572,26 @@ def build(screenshot_dir: Path | None) -> None:
         section.top_margin = Cm(0)
         section.bottom_margin = Cm(0)
     else:
-        section.left_margin = Cm(2.8)
-        section.right_margin = Cm(2.8)
-        section.top_margin = Cm(2.5)
-        section.bottom_margin = Cm(2.5)
+        section.left_margin = Cm(2.4)
+        section.right_margin = Cm(2.4)
+        section.top_margin = Cm(2.2)
+        section.bottom_margin = Cm(2.2)
         # 无封面图时，首页（标题页）不显示页码
         section.different_first_page_header_footer = True
         add_page_number_footer(section)
 
     # 正文默认样式
     normal = document.styles["Normal"]
-    style_font(normal, BODY_LATIN, BODY_CJK, size=10.5)
-    normal.paragraph_format.line_spacing = 1.25
+    style_font(normal, BODY_LATIN, BODY_CJK, size=10)
+    normal.paragraph_format.line_spacing = 1.15
     normal.paragraph_format.space_after = Pt(3)
 
     for style_name, size in (("Heading 1", 18), ("Heading 2", 15), ("Heading 3", 13), ("Heading 4", 11.5)):
         style = document.styles[style_name]
         style_font(style, HEADING_LATIN, HEADING_CJK, size=size, bold=True)
         style.font.color.rgb = RGBColor(0x1A, 0x1A, 0x1A)
-        style.paragraph_format.space_before = Pt(9)
-        style.paragraph_format.space_after = Pt(4)
+        style.paragraph_format.space_before = Pt(7)
+        style.paragraph_format.space_after = Pt(3)
 
     # 列表样式必须显式指定字体，否则 Word 会用默认字体，出现中英混排不统一
     for style_name in ("List Bullet", "List Number"):
@@ -599,7 +599,7 @@ def build(screenshot_dir: Path | None) -> None:
             style = document.styles[style_name]
         except KeyError:
             continue
-        style_font(style, BODY_LATIN, BODY_CJK, size=10.5, bold=False)
+        style_font(style, BODY_LATIN, BODY_CJK, size=10, bold=False)
         style.paragraph_format.line_spacing = 1.22
 
     # 目录域生成的三级样式：压紧行距，避免目录占满三页
@@ -608,7 +608,7 @@ def build(screenshot_dir: Path | None) -> None:
             style = document.styles[style_name]
         except KeyError:
             continue
-        style_font(style, BODY_LATIN, BODY_CJK, size=10.5, bold=False)
+        style_font(style, BODY_LATIN, BODY_CJK, size=10, bold=False)
         style.paragraph_format.space_before = Pt(0)
         style.paragraph_format.space_after = Pt(0)
         style.paragraph_format.line_spacing = 1.25

@@ -14,7 +14,7 @@ from app.database import get_db
 from app.models.domain import GeneratedReport
 from app.models.interview import InterviewMessage, InterviewPracticeRecord, InterviewScenario
 from app.models.user import User
-from app.security import get_current_user, get_optional_user
+from app.security import get_ai_user, get_current_user, get_optional_user
 from app.services import learner_profile, safety, vision
 from app.services.ai_service import DIMENSIONS, ai_service, validate_interview_report, validate_interview_turn
 from app.services.point_service import award_points
@@ -235,7 +235,7 @@ def get_scenario(scenario_id: str, user: User | None = Depends(get_optional_user
 
 
 @router.post("/practice/start")
-async def start_practice(data: StartRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def start_practice(data: StartRequest, user: User = Depends(get_ai_user), db: Session = Depends(get_db)):
     requested = db.get(InterviewScenario, data.scenario_id)
     if not requested:
         raise HTTPException(status_code=404, detail="场景不存在")
@@ -291,7 +291,7 @@ async def start_practice(data: StartRequest, user: User = Depends(get_current_us
 
 
 @router.post("/practice/{practice_id}/respond")
-async def respond(practice_id: str, data: RespondRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def respond(practice_id: str, data: RespondRequest, user: User = Depends(get_ai_user), db: Session = Depends(get_db)):
     verdict = safety.check_input(data.content)
     if not verdict.allowed:
         raise HTTPException(status_code=400, detail=verdict.reason)
@@ -402,7 +402,7 @@ async def respond(practice_id: str, data: RespondRequest, user: User = Depends(g
 
 
 @router.post("/practice/{practice_id}/end")
-async def end_practice(practice_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def end_practice(practice_id: str, user: User = Depends(get_ai_user), db: Session = Depends(get_db)):
     record = owned_record(db, practice_id, user)
     if record.report_json:
         return {"code": 0, "data": _json(record.report_json, {})}
@@ -523,7 +523,7 @@ def get_practice(practice_id: str, user: User = Depends(get_current_user), db: S
 
 
 @router.post("/practice/{practice_id}/hint")
-async def get_hint(practice_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def get_hint(practice_id: str, user: User = Depends(get_ai_user), db: Session = Depends(get_db)):
     record = owned_record(db, practice_id, user)
     messages = db.scalars(_message_query(record.id)).all()
     last_ai_question = next((item.content for item in reversed(messages) if item.role == "ai" and item.delivery_status == "sent"), "")

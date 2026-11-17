@@ -80,3 +80,19 @@ def require_role(*roles: str) -> Callable:
         return user
 
     return dependency
+
+
+async def get_ai_user(user: User = Depends(get_current_user)) -> User:
+    """AI 调用入口：先查当日 token 额度，再把用户绑定到上下文供网关计量。
+
+    必须是异步依赖：同步依赖会在线程池中执行，ContextVar 的写入不会回流到
+    处理请求的协程上下文，额度就会永远记在 None 上。
+    """
+    from app.services import ai_quota
+
+    try:
+        ai_quota.ensure(user.id, user.role)
+    except ai_quota.QuotaExceeded as exc:
+        raise HTTPException(status_code=status.HTTP_429_TOO_MANY_REQUESTS, detail=str(exc)) from exc
+    ai_quota.bind(user.id)
+    return user

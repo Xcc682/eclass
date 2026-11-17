@@ -1,0 +1,767 @@
+{
+  "k": 6,
+  "items": [
+    {
+      "id": "q01",
+      "question": "中国共产党的性质是什么？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党徽党旗条例",
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党章程"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "q02",
+      "question": "党的最高理想和最终目标是什么？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党章程",
+        "中国共产党党章（2022年修改）(1)"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "q03",
+      "question": "红船精神的内涵包括哪些方面？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "红船精神学习资料"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "q04",
+      "question": "党的二十大主题是什么？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "党的二十大报告学习要点",
+        "中共中央关于进一步全面深化改革"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "q05",
+      "question": "入党誓词的内容是什么？",
+      "mode": "baseline",
+      "recall@1": 0.0,
+      "recall@6": 0.0,
+      "mrr@6": 0.0,
+      "top": [
+        "中国共产党党员教育管理工作条例",
+        "中国共产党党徽党旗条例",
+        "中国共产党支部工作条例"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "q06",
+      "question": "预备党员的预备期是多长时间？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党发展党员工作细则",
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党章程"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "q07",
+      "question": "想入党一般要经过哪些步骤？",
+      "mode": "baseline",
+      "recall@1": 0.0,
+      "recall@6": 0.0,
+      "mrr@6": 0.0,
+      "top": [],
+      "trace": {}
+    },
+    {
+      "id": "q08",
+      "question": "党员享有哪些权利？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党员权利保障条例",
+        "中国共产党党员权利保障条例",
+        "中国共产党章程"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "q09",
+      "question": "党员必须履行哪些义务？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党章程",
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党章程"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "q10",
+      "question": "党的纪律处分有哪几种？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党章程",
+        "中国共产党章程"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "q11",
+      "question": "党内监督的重点对象是谁？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党内监督条例",
+        "中国共产党党内监督条例",
+        "中国共产党党内监督条例"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "q12",
+      "question": "党支部要承担哪些基本任务？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党支部工作条例",
+        "中国共产党党员教育管理工作条例",
+        "中国共产党党章（2022年修改）(1)"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "q13",
+      "question": "党的基层组织选举采用什么方式？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党基层组织选举工作条例",
+        "中国共产党基层组织选举工作条例",
+        "中国共产党基层组织选举工作条例"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "q14",
+      "question": "党员领导干部廉洁自律规范有哪些要求？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党廉洁自律准则",
+        "中国共产党支部工作条例",
+        "中国共产党党员教育管理工作条例"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "q15",
+      "question": "重大事项请示报告要坚持什么原则？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党重大事项请示报告条例",
+        "中国共产党重大事项请示报告条例",
+        "中国共产党重大事项请示报告条例"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "q16",
+      "question": "党的百年奋斗有怎样的历史意义？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中共中央关于党的百年奋斗重大成就和历史经验的决议",
+        "中共中央关于党的百年奋斗重大成就和历史经验的决议",
+        "中共中央关于党的百年奋斗重大成就和历史经验的决议"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "q17",
+      "question": "入党的年龄条件是什么？",
+      "mode": "baseline",
+      "recall@1": 0.0,
+      "recall@6": 1.0,
+      "mrr@6": 0.333,
+      "top": [
+        "中国共产党党徽党旗条例",
+        "中国共产党党员教育管理工作条例",
+        "中国共产党党章（2022年修改）(1)"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "q18",
+      "question": "党的组织生活有哪些形式？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党支部工作条例",
+        "中国共产党支部工作条例",
+        "中国共产党党员教育管理工作条例"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "q19",
+      "question": "民主集中制的基本含义是什么？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党党内监督条例",
+        "中国共产党章程"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "q20",
+      "question": "党的群众路线是什么？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党章（2022年修改）(1)",
+        "中共中央关于党的百年奋斗重大成就和历史经验的决议",
+        "中共中央关于党的百年奋斗重大成就和历史经验的决议"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "q21",
+      "question": "巡视工作的方针是什么？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党内监督条例",
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党章程"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "q22",
+      "question": "党员教育管理工作的基本任务是什么？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党员教育管理工作条例",
+        "中国共产党党员教育管理工作条例",
+        "中国共产党党员教育管理工作条例"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "q23",
+      "question": "党的全国代表大会每几年举行一次？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党章程",
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党章程"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "q01",
+      "question": "中国共产党的性质是什么？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党徽党旗条例",
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党章程"
+      ],
+      "trace": {
+        "queries": 2,
+        "expanded": 1,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "q02",
+      "question": "党的最高理想和最终目标是什么？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党章程",
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党党徽党旗条例"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "q03",
+      "question": "红船精神的内涵包括哪些方面？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "红船精神学习资料"
+      ],
+      "trace": {
+        "queries": 2,
+        "expanded": 1,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "q04",
+      "question": "党的二十大主题是什么？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "党的二十大报告学习要点",
+        "中共中央关于进一步全面深化改革",
+        "中共中央关于进一步全面深化改革"
+      ],
+      "trace": {
+        "queries": 2,
+        "expanded": 1,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "q05",
+      "question": "入党誓词的内容是什么？",
+      "mode": "enhanced",
+      "recall@1": 0.0,
+      "recall@6": 0.0,
+      "mrr@6": 0.0,
+      "top": [
+        "中国共产党党员教育管理工作条例",
+        "中国共产党党徽党旗条例",
+        "中国共产党支部工作条例"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "q06",
+      "question": "预备党员的预备期是多长时间？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党发展党员工作细则",
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党章程"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "q07",
+      "question": "想入党一般要经过哪些步骤？",
+      "mode": "enhanced",
+      "recall@1": 0.0,
+      "recall@6": 0.0,
+      "mrr@6": 0.0,
+      "top": [],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "q08",
+      "question": "党员享有哪些权利？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党员权利保障条例",
+        "中国共产党党员权利保障条例",
+        "中国共产党章程"
+      ],
+      "trace": {
+        "queries": 2,
+        "expanded": 1,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "q09",
+      "question": "党员必须履行哪些义务？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党章程",
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党章程"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "q10",
+      "question": "党的纪律处分有哪几种？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党章程",
+        "中国共产党章程"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "q11",
+      "question": "党内监督的重点对象是谁？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党内监督条例",
+        "中国共产党党内监督条例",
+        "中国共产党党内监督条例"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "q12",
+      "question": "党支部要承担哪些基本任务？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党支部工作条例",
+        "中国共产党党员教育管理工作条例",
+        "中国共产党党章（2022年修改）(1)"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "q13",
+      "question": "党的基层组织选举采用什么方式？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党基层组织选举工作条例",
+        "中国共产党基层组织选举工作条例",
+        "中国共产党基层组织选举工作条例"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "q14",
+      "question": "党员领导干部廉洁自律规范有哪些要求？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党廉洁自律准则",
+        "中国共产党支部工作条例",
+        "中国共产党党员教育管理工作条例"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "q15",
+      "question": "重大事项请示报告要坚持什么原则？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党重大事项请示报告条例",
+        "中国共产党重大事项请示报告条例",
+        "中国共产党重大事项请示报告条例"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "q16",
+      "question": "党的百年奋斗有怎样的历史意义？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中共中央关于党的百年奋斗重大成就和历史经验的决议",
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党党章（2022年修改）(1)"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "q17",
+      "question": "入党的年龄条件是什么？",
+      "mode": "enhanced",
+      "recall@1": 0.0,
+      "recall@6": 1.0,
+      "mrr@6": 0.333,
+      "top": [
+        "中国共产党党员教育管理工作条例",
+        "中国共产党党徽党旗条例",
+        "中国共产党党章（2022年修改）(1)"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "q18",
+      "question": "党的组织生活有哪些形式？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党支部工作条例",
+        "中国共产党支部工作条例",
+        "中国共产党党员教育管理工作条例"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "q19",
+      "question": "民主集中制的基本含义是什么？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党党内监督条例",
+        "中国共产党章程"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "q20",
+      "question": "党的群众路线是什么？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党党员教育管理工作条例",
+        "中共中央关于党的百年奋斗重大成就和历史经验的决议"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "q21",
+      "question": "巡视工作的方针是什么？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党内监督条例",
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党章程"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "q22",
+      "question": "党员教育管理工作的基本任务是什么？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党员教育管理工作条例",
+        "中国共产党党员教育管理工作条例",
+        "中国共产党党员教育管理工作条例"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "q23",
+      "question": "党的全国代表大会每几年举行一次？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党章程",
+        "中国共产党章程",
+        "中国共产党党章（2022年修改）(1)"
+      ],
+      "trace": {
+        "queries": 2,
+        "expanded": 1,
+        "reranked": false,
+        "degraded": false
+      }
+    }
+  ],
+  "summary": {
+    "baseline": {
+      "recall@1": 0.8696,
+      "recall@6": 0.913,
+      "mrr@6": 0.884,
+      "items": 23
+    },
+    "enhanced": {
+      "recall@1": 0.8696,
+      "recall@6": 0.913,
+      "mrr@6": 0.884,
+      "items": 23
+    }
+  },
+  "unavailable": [
+    "q24"
+  ]
+}

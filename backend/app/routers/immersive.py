@@ -12,7 +12,7 @@ from app.models.domain import GeneratedReport, TourRecord, TourSite
 from app.models.history import HistoryLearningRecord, HistoryScenario
 from app.models.immersive import ImmersiveBook, ImmersiveProgress, ImmersiveSpread
 from app.models.user import User
-from app.security import get_current_user
+from app.security import get_ai_user, get_current_user
 from app.services.ai_service import ai_service, validate_generated_text
 from app.services.point_service import award_points
 
@@ -386,7 +386,7 @@ def advance_route(book_id: str, data: AdvanceRequest, user: User = Depends(get_c
 
 
 @router.post("/books/{book_id}/ask")
-async def ask_in_book(book_id: str, data: AskRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def ask_in_book(book_id: str, data: AskRequest, user: User = Depends(get_ai_user), db: Session = Depends(get_db)):
     book = _published_book(db, book_id)
     spreads = _spreads(db, book.id)
     progress = _progress(db, user, book)

@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.history import HistoryLearningRecord, HistoryScenario
 from app.models.user import User
-from app.security import get_current_user
+from app.security import get_ai_user, get_current_user
 from app.services import vision
 from app.services.ai_service import ai_service, validate_generated_text
 from app.services.point_service import award_points
@@ -67,7 +67,7 @@ def get_scenario(scenario_id: str, user: User = Depends(get_current_user), db: S
 
 
 @router.post("/ask")
-async def ask_question(data: AskRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def ask_question(data: AskRequest, user: User = Depends(get_ai_user), db: Session = Depends(get_db)):
     scenario = db.get(HistoryScenario, data.scenario_id)
     if not scenario:
         raise HTTPException(status_code=404, detail="场景不存在")

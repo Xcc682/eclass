@@ -54,6 +54,12 @@ def _clear_login_failures(phone: str) -> None:
     _auth_failures[f"phone:{phone}"].clear()
 
 
+def reset_login_throttle() -> None:
+    """清空登录限流计数，供测试与运维使用。"""
+    _auth_attempts.clear()
+    _auth_failures.clear()
+
+
 class LoginRequest(BaseModel):
     phone: str = Field(pattern=r"^1\d{10}$")
     password: str = Field(min_length=6, max_length=128)

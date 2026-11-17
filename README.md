@@ -24,6 +24,9 @@
 | **全文搜索** | SQLite FTS5 / PostgreSQL pg_trgm | 关键词混合检索 |
 | **AI 大模型** | DeepSeek API (deepseek-v4-flash) | 对话、评分、生成、Function Calling、图片理解 |
 | **AI 工具协议** | OpenAI 兼容 Function Calling + MCP (stdio) | 自主检索 Agent、外部工具接入 |
+| **检索增强** | 多查询改写 + 加权 RRF 融合（RAG-Fusion），可选 LLM 列表重排 | 扩大候选池、多路命中优先 |
+| **语义缓存** | cachetools `TTLCache` + 嵌入余弦阈值 | 近义问题复用带引用答案 |
+| **可靠性** | 熔断器 + 按用户日额度 + 调用指标 | LLM 网关可观测与保护 |
 | **多模态** | 图片输入（PNG/JPEG/WebP）+ Edge 神经语音合成 | 手写稿识读、问答朗读 |
 | **部署** | Docker Compose | 容器化一键部署 |
 
@@ -67,6 +70,10 @@ AI 扮演党委组织委员，模拟完整入党谈话流程（积极分子→�
 
 ## 🧬 AI 技术架构
 
+以下能力大多对标成熟开源实现（LangChain MultiQueryRetriever、RAG-Fusion、RankGPT、
+GPTCache、RAGAS、pybreaker），哪些直接复用、哪些按公开算法自研以及取舍理由，
+见 [`docs/AI_技术对标.md`](docs/AI_技术对标.md)。
+
 ### 自主检索 Agent（Function Calling）
 
 知识问答由模型自行规划工具调用，而不是固定检索一次再总结：
@@ -87,6 +94,34 @@ AI 扮演党委组织委员，模拟完整入党谈话流程（积极分子→�
 
 谈话考官开场前会读取本人历史练习与最薄弱维度（`app/services/learner_profile.py`），
 针对性追问；知识问答里可直接问「我哪里薄弱、给我出几道题」，答案标注为「学习档案回答」。
+
+### 检索增强：RAG-Fusion + 列表重排
+
+固定检索链路在混合检索之上做了三层增强（`app/services/retrieval_advanced.py`）：
+
+- 快模型把问题改写成 2 个同义检索式，与原问题并行检索
+- 多组结果按 RRF（k=60）融合，原始查询加权（近似改写彼此相似，等权会淹没原话命中），同一文档最多取 3 个片段
+- 可选列表重排（RankGPT 式，`RETRIEVAL_RERANK_ENABLED=true` 开启）：只回部分编号时按序前置、其余保序补全；默认关闭，因为它每次多 1–2 秒、在自建评测集上只有 ±1 题波动
+
+24 题人工评测集上（`backend/scripts/eval_retrieval.py`），基线（单查询）与增强（多查询 + RRF）
+的 recall@1 / recall@6 / MRR@6 都是 0.8696 / 0.9130 / 0.8840 —— 这组语料的正确片段本来就排在第一，
+增强与基线持平；评测的价值在于把链路跑通并暴露上限，而不是造一个好看的增幅。
+
+### 语义缓存与引用核验
+
+- **语义缓存**（`app/services/semantic_cache.py`）：问题嵌入余弦 ≥0.93 直接复用带引用的
+  回答，只缓存带引用、非降级的知识库答案；存储交给 cachetools `TTLCache`
+- **引用核验**（`app/services/grounding.py`）：回答生成后逐块判断引用是否被原文支撑，
+  剔除沾边引用并重新编号；核验失败保留原答案并标记，不让核验本身导致回答失败
+
+### LLM 网关：可观测、熔断与额度
+
+所有模型调用收敛到 `AIService._post_chat`：
+
+- 每次调用记录模型、时延、token 与成败，`GET /api/v1/ai/observability` 可查
+- 连续 5 次上游失败打开熔断 30 秒，冷却后半开试探；4xx 不计入失败
+- 按用户自然日 30 万 token 限额，超额 429（管理员不受限）
+- 意图路由、改写、重排、核验走快模型，问答与报告生成走主模型
 
 ### AI 安全网关
 
@@ -285,13 +320,14 @@ API 文档在开发模式下可直接访问：**http://localhost:8000/docs**
 
 ### 自动化测试
 
-后端共 **10 个测试文件、74 个测试用例，全部通过**（约 13 秒）。测试重点不在
+后端共 **11 个测试文件、104 个测试用例，全部通过**。测试重点不在
 覆盖率数字，而在**把 AI 输出当作不可信输入**来验证系统可靠性：
 
 | 测试文件 | 用例数 | 覆盖的风险点 |
 |----------|--------|--------------|
 | `tests/test_api.py` | 13 | 注册登录与角色权限、AI 失败显式化、谈话全链路、辩论状态机与断点续练、超长上下文截断、非法 JSON 回退与重试 |
 | `tests/test_knowledge.py` | 13 | 分块解析、引用重排/去重/校验、截断 JSON 恢复、工具选择路由、无证据拒答、向量超时降级、会话幂等 |
+| `tests/test_ai_advanced.py` | 30 | 调用指标与熔断状态机、日额度与 429、模型分流、RRF 融合与重排回退、语义缓存命中/过期/作用域、引用核验与失败开放、可观测接口 |
 | `tests/test_knowledge_agent.py` | 5 | Agent 工具循环、并行调用、引用编号稳定、步数上界、未知工具不崩溃 |
 | `tests/test_learner_profile.py` | 7 | 跨模块档案汇总、最薄弱维度、详情归属校验、档案不参与引用、无身份兜底 |
 | `tests/test_safety.py` | 8 | 中英文注入（含拆字绕过）、评分操控只记审计、超长输入、输出脱敏 |
@@ -304,7 +340,7 @@ API 文档在开发模式下可直接访问：**http://localhost:8000/docs**
 
 ```bash
 cd backend
-python -m pytest tests/ -q          # 74 passed
+python -m pytest tests/ -q          # 104 passed
 ```
 
 ### 工程化配置

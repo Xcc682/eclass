@@ -11,7 +11,7 @@ from app.database import get_db
 from app.models.domain import GeneratedReport, TourRecord, TourSite
 from app.models.immersive import ImmersiveProgress
 from app.models.user import User
-from app.security import get_current_user
+from app.security import get_ai_user, get_current_user
 from app.services import vision
 from app.services.ai_service import ai_service, validate_generated_text
 from app.services.point_service import award_points
@@ -94,7 +94,7 @@ def _immersive_note(db: Session, record_id: str) -> str:
 
 
 @router.post("/intro")
-async def get_intro(data: SiteRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def get_intro(data: SiteRequest, user: User = Depends(get_ai_user), db: Session = Depends(get_db)):
     site = db.get(TourSite, data.site_id)
     if not site:
         raise HTTPException(status_code=404, detail="景点不存在")
@@ -106,7 +106,7 @@ async def get_intro(data: SiteRequest, user: User = Depends(get_current_user), d
 
 
 @router.post("/ask")
-async def ask_question(data: AskRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def ask_question(data: AskRequest, user: User = Depends(get_ai_user), db: Session = Depends(get_db)):
     site = db.get(TourSite, data.site_id)
     if not site:
         raise HTTPException(status_code=404, detail="景点不存在")
@@ -129,7 +129,7 @@ async def ask_question(data: AskRequest, user: User = Depends(get_current_user),
 
 
 @router.post("/generate-report")
-async def generate_report(data: ReportRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+async def generate_report(data: ReportRequest, user: User = Depends(get_ai_user), db: Session = Depends(get_db)):
     site = db.get(TourSite, data.site_id)
     if not site:
         raise HTTPException(status_code=404, detail="景点不存在")

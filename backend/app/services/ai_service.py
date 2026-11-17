@@ -1,10 +1,12 @@
 """AI Service - Real DeepSeek API integration with phase-aware prompts."""
 import contextlib
 import json
+import time
 
 import httpx
 
 from app.config import settings
+from app.services import ai_quota, circuit_breaker, llm_metrics
 from app.services.vision import with_images
 
 DIMENSIONS = ["思想认识", "表达逻辑", "入党动机", "理论掌握", "应变能力"]
@@ -315,11 +317,77 @@ TEMPLATE_GEN_PROMPT = "你是一位写作助手，帮助大学生撰写思政类
 KNOWLEDGE_HINT_PROMPT = "你是入党谈话辅导老师。学生正在回答一个问题，但可能不知如何表达。请根据当前问题给出一段150字以内的引导性提示，帮学生理清思路。不要给出标准答案，只提供思考方向。"
 
 
+def _is_upstream_client_error(exc: Exception) -> bool:
+    """上游返回 4xx：请求本身的问题，不应计入熔断失败。"""
+    response = getattr(exc, "response", None)
+    status_code = getattr(response, "status_code", None)
+    return isinstance(status_code, int) and 400 <= status_code < 500
+
+
+def _estimate_prompt_tokens(payload: dict) -> int:
+    """上游未返回 usage 时，按字符数粗估提示 token（中文约 1 字 1 token）。"""
+    total = 0
+    for message in payload.get("messages") or []:
+        content = message.get("content")
+        if isinstance(content, str):
+            total += len(content)
+        elif isinstance(content, list):
+            for part in content:
+                if isinstance(part, dict) and isinstance(part.get("text"), str):
+                    total += len(part["text"])
+    total += len(json.dumps(payload.get("tools") or [], ensure_ascii=False))
+    return max(1, total // 2)
+
+
 class AIService:
     def __init__(self):
         self.api_key = settings.LLM_API_KEY
         self.api_base = settings.LLM_API_BASE
         self.model = settings.LLM_MODEL
+        # 快模型承担意图路由、查询改写、重排与引用核验等低复杂度调用
+        self.fast_model = settings.LLM_MODEL_FAST or settings.LLM_MODEL
+
+    async def _post_chat(self, payload: dict, timeout: float | None, model: str) -> dict:
+        """统一的上游请求：熔断、计量与用量统计都在这里完成。"""
+        if not self.api_key:
+            raise RuntimeError("AI 服务未配置，请设置 LLM_API_KEY")
+        if not circuit_breaker.breaker.allow():
+            llm_metrics.record(model, 0, ok=False, error="circuit_open")
+            raise circuit_breaker.CircuitOpenError("AI 服务连续失败，已暂停调用，请稍后重试")
+        headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+        }
+        started = time.perf_counter()
+        try:
+            async with httpx.AsyncClient(timeout=timeout or settings.KNOWLEDGE_LLM_TIMEOUT_SECONDS) as client:
+                resp = await client.post(
+                    f"{self.api_base}/v1/chat/completions",
+                    headers=headers,
+                    json=payload,
+                )
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception as exc:
+            # 4xx 说明请求本身有问题（参数、额度、鉴权），换一次也一样，
+            # 计入熔断只会让格式错误拖垮整条链路；只有 5xx 与网络异常才记失败
+            if not _is_upstream_client_error(exc):
+                circuit_breaker.breaker.record_failure()
+            llm_metrics.record(
+                model, int((time.perf_counter() - started) * 1000),
+                ok=False, error=exc.__class__.__name__,
+            )
+            raise
+        circuit_breaker.breaker.record_success()
+        usage = data.get("usage") if isinstance(data, dict) else None
+        prompt_tokens = int((usage or {}).get("prompt_tokens") or 0) or _estimate_prompt_tokens(payload)
+        completion_tokens = int((usage or {}).get("completion_tokens") or 0)
+        llm_metrics.record(
+            model, int((time.perf_counter() - started) * 1000), ok=True,
+            prompt_tokens=prompt_tokens, completion_tokens=completion_tokens,
+        )
+        ai_quota.consume(ai_quota.current_user(), prompt_tokens + completion_tokens)
+        return data
 
     async def _call_api(
         self,
@@ -332,20 +400,16 @@ class AIService:
         timeout: float | None = None,
         disable_thinking: bool = False,
         json_mode: bool = False,
+        model: str | None = None,
     ) -> str:
         """Call DeepSeek API (OpenAI-compatible)"""
-        if not self.api_key:
-            raise RuntimeError("AI 服务未配置，请设置 LLM_API_KEY")
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json"
-        }
+        chosen_model = model or self.model
         payload = {
-            "model": self.model,
+            "model": chosen_model,
             "messages": messages,
             "temperature": temperature,
             "max_tokens": max_tokens,
-            "stream": False
+            "stream": False,
         }
         if tools or disable_thinking:
             # DeepSeek V4 Flash can spend the entire completion budget in
@@ -358,15 +422,8 @@ class AIService:
             payload["tools"] = tools
             if tool_choice:
                 payload["tool_choice"] = tool_choice
-        async with httpx.AsyncClient(timeout=timeout or settings.KNOWLEDGE_LLM_TIMEOUT_SECONDS) as client:
-            resp = await client.post(
-                f"{self.api_base}/v1/chat/completions",
-                headers=headers,
-                json=payload
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            return data["choices"][0]["message"]["content"]
+        data = await self._post_chat(payload, timeout, chosen_model)
+        return data["choices"][0]["message"]["content"]
 
     async def _call_tool_api(
         self,
@@ -375,16 +432,12 @@ class AIService:
         *,
         tool_choice: str = "required",
         max_tokens: int = 400,
+        model: str | None = None,
     ) -> dict:
         """Call DeepSeek with tools and return the complete assistant message."""
-        if not self.api_key:
-            raise RuntimeError("AI 服务未配置，请设置 LLM_API_KEY")
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
+        chosen_model = model or self.model
         payload = {
-            "model": self.model,
+            "model": chosen_model,
             "messages": messages,
             "tools": tools,
             "tool_choice": tool_choice,
@@ -394,18 +447,11 @@ class AIService:
             "max_tokens": max_tokens,
             "stream": False,
         }
-        async with httpx.AsyncClient(timeout=settings.KNOWLEDGE_LLM_TIMEOUT_SECONDS) as client:
-            resp = await client.post(
-                f"{self.api_base}/v1/chat/completions",
-                headers=headers,
-                json=payload,
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            message = data["choices"][0].get("message")
-            if not isinstance(message, dict):
-                raise AIResponseValidationError("AI 工具选择响应缺少消息")
-            return message
+        data = await self._post_chat(payload, settings.KNOWLEDGE_LLM_TIMEOUT_SECONDS, chosen_model)
+        message = data["choices"][0].get("message")
+        if not isinstance(message, dict):
+            raise AIResponseValidationError("AI 工具选择响应缺少消息")
+        return message
 
     async def select_knowledge_tool(
         self,
@@ -477,7 +523,9 @@ class AIService:
                 "content": f"最近对话：\n{history_text or '无'}\n\n当前问题：{question}",
             },
         ]
-        message = await self._call_tool_api(messages, tools, tool_choice="required")
+        message = await self._call_tool_api(
+            messages, tools, tool_choice="required", model=self.fast_model,
+        )
         calls = message.get("tool_calls")
         if not isinstance(calls, list) or not calls or not all(isinstance(item, dict) for item in calls):
             raise AIResponseValidationError("AI 未选择知识问答工具")

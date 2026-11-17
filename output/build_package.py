@@ -68,8 +68,13 @@ def collect() -> list[Path]:
         for path in base.rglob("*"):
             if path.is_file() and not should_skip(path.relative_to(ROOT)):
                 files.append(path)
-    # 文档与脚本单独加入：只收最终版作品介绍文档
-    for pattern in ("思政情景工坊_作品介绍文档.docx", "思政情景工坊_作品介绍文档.pdf"):
+    # 文档与脚本单独加入：只收最终版作品介绍文档与检索评测报告
+    for pattern in (
+        "思政情景工坊_作品介绍文档.docx",
+        "思政情景工坊_作品介绍文档.pdf",
+        "评测报告_检索.md",
+        "eval_retrieval.json",
+    ):
         path = ROOT / "output" / pattern
         if path.is_file():
             files.append(path)
