@@ -12,6 +12,7 @@ from app.models.domain import GeneratedReport, TourRecord, TourSite
 from app.models.immersive import ImmersiveProgress
 from app.models.user import User
 from app.security import get_current_user
+from app.services import vision
 from app.services.ai_service import ai_service, validate_generated_text
 from app.services.point_service import award_points
 
@@ -25,6 +26,7 @@ class SiteRequest(BaseModel):
 class AskRequest(SiteRequest):
     question: str = Field(min_length=1, max_length=1000)
     record_id: str | None = None
+    images: list[str] = Field(default_factory=list, max_length=2)
 
 
 class ReportRequest(SiteRequest):
@@ -109,7 +111,11 @@ async def ask_question(data: AskRequest, user: User = Depends(get_current_user),
     if not site:
         raise HTTPException(status_code=404, detail="景点不存在")
     try:
-        answer = validate_generated_text(await ai_service.tour_ask(site.name, data.question), "研学回答")
+        images = vision.sanitize_images(data.images)
+    except vision.ImageInputError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
+        answer = validate_generated_text(await ai_service.tour_ask(site.name, data.question, images=images or None), "研学回答")
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"AI 服务暂不可用：{exc}") from exc
     if data.record_id:

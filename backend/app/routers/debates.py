@@ -16,7 +16,7 @@ from app.models.domain import GeneratedReport
 from app.models.knowledge import KnowledgeChunk, KnowledgeDocument
 from app.models.user import User
 from app.security import get_current_user
-from app.services import safety
+from app.services import safety, vision
 from app.services.ai_service import ai_service, validate_debate_feedback, validate_debate_turn, validate_topics
 from app.services.knowledge_service import retrieve
 from app.services.point_service import award_points
@@ -64,6 +64,7 @@ class ArgumentRequest(BaseModel):
     argument: str = Field(min_length=1, max_length=3000)
     evidence_refs: list[EvidenceRef] = Field(default_factory=list, max_length=3)
     submission_id: str = Field(default_factory=lambda: str(uuid.uuid4()), min_length=8, max_length=64)
+    images: list[str] = Field(default_factory=list, max_length=2)
 
 
 class EvidenceSearchRequest(BaseModel):
@@ -319,6 +320,10 @@ async def submit_argument(session_id: str, data: ArgumentRequest, user: User = D
     verdict = safety.check_input(data.argument)
     if not verdict.allowed:
         raise HTTPException(status_code=400, detail=verdict.reason)
+    try:
+        images = vision.sanitize_images(data.images)
+    except vision.ImageInputError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     record = owned(db, session_id, user)
     if record.is_legacy or record.flow_version != FLOW_VERSION:
         raise HTTPException(status_code=409, detail="旧版辩论仅供查看，请重新开始新版训练")
@@ -383,7 +388,7 @@ async def submit_argument(session_id: str, data: ArgumentRequest, user: User = D
     try:
         turn = validate_debate_turn(await ai_service.debate_argue(
             topic.title, record.stance, data.argument, conversation,
-            stage=step["stage"], step=step["key"], evidence=citations,
+            stage=step["stage"], step=step["key"], evidence=citations, images=images or None,
         ))
     except Exception as exc:
         failed = db.get(DebateMessage, user_message.id)

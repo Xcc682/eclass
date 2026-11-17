@@ -15,7 +15,7 @@ from app.models.domain import GeneratedReport
 from app.models.interview import InterviewMessage, InterviewPracticeRecord, InterviewScenario
 from app.models.user import User
 from app.security import get_current_user, get_optional_user
-from app.services import safety
+from app.services import learner_profile, safety, vision
 from app.services.ai_service import DIMENSIONS, ai_service, validate_interview_report, validate_interview_turn
 from app.services.point_service import award_points
 
@@ -35,6 +35,7 @@ class StartRequest(BaseModel):
 class RespondRequest(BaseModel):
     content: str = Field(min_length=1, max_length=3000)
     submission_id: str = Field(default_factory=lambda: str(uuid.uuid4()), min_length=8, max_length=64)
+    images: list[str] = Field(default_factory=list, max_length=2)
 
 
 def _json(value: str | None, fallback):
@@ -259,7 +260,8 @@ async def start_practice(data: StartRequest, user: User = Depends(get_current_us
         if candidates:
             scenario = random.choice(candidates)
     try:
-        result = validate_interview_turn(await ai_service.interview_start(scenario.difficulty))
+        context = learner_profile.interview_context(db, user.id)
+        result = validate_interview_turn(await ai_service.interview_start(scenario.difficulty, learner_context=context))
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"AI 服务暂不可用：{exc}") from exc
 
@@ -293,6 +295,10 @@ async def respond(practice_id: str, data: RespondRequest, user: User = Depends(g
     verdict = safety.check_input(data.content)
     if not verdict.allowed:
         raise HTTPException(status_code=400, detail=verdict.reason)
+    try:
+        images = vision.sanitize_images(data.images)
+    except vision.ImageInputError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     record = owned_record(db, practice_id, user)
     if record.is_legacy or record.flow_version != FLOW_VERSION:
         raise HTTPException(status_code=409, detail="旧版谈话仅供查看，请重新开始新版练习")
@@ -354,6 +360,7 @@ async def respond(practice_id: str, data: RespondRequest, user: User = Depends(g
         result = validate_interview_turn(await ai_service.interview_respond(
             conversation, (db.get(InterviewScenario, record.scenario_id) or InterviewScenario(difficulty="intermediate")).difficulty,
             phase=next_phase, evaluated_phase=evaluated_phase, final_turn=final_turn,
+            images=images or None,
         ))
     except Exception as exc:
         failed = db.get(InterviewMessage, user_message.id)

@@ -99,11 +99,11 @@ onLoad(async(query:any)=>{
 })
 onUnload(()=>{alive.value=false})
 
-async function submitMessage(content:string,message:InterviewMessage){
+async function submitMessage(content:string,message:InterviewMessage,images?:string[]){
   if(isThinking.value||status.value!=='in_progress'||!practiceId.value)return
   message.local_status='pending';isThinking.value=true;scrollBottom()
   try{
-    const result=await interviewApi.submitResponse(practiceId.value,content,message.submission_id!)
+    const result=await interviewApi.submitResponse(practiceId.value,content,message.submission_id!,images)
     if(!alive.value)return
     const index=messages.value.findIndex(item=>item.id===message.id)
     if(index>=0)messages.value[index]={...result.user_message,local_status:'sent'}
@@ -114,11 +114,11 @@ async function submitMessage(content:string,message:InterviewMessage){
   }catch(error:any){if(alive.value){message.local_status='failed';uni.showToast({title:error.message||'发送失败，请重试',icon:'none'})}}
   finally{if(alive.value){isThinking.value=false;scrollBottom()}}
 }
-function handleSend(content:string){
+function handleSend(content:string,images?:string[]){
   if(isThinking.value||status.value!=='in_progress'||!practiceId.value)return
   const submissionId=`sub-${Date.now()}-${Math.random().toString(36).slice(2,10)}`
   const message:InterviewMessage={id:`local-${submissionId}`,role:'user',content,round_number:answeredCount.value+1,submission_id:submissionId,local_status:'pending'}
-  messages.value.push(message);submitMessage(content,message)
+  messages.value.push(message);submitMessage(content,message,images)
 }
 function retryMessage(message:InterviewMessage){if(!message.submission_id)message.submission_id=`sub-${Date.now()}-${Math.random().toString(36).slice(2,10)}`;submitMessage(message.content,message)}
 async function showHint(){

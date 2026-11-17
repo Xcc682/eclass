@@ -11,6 +11,7 @@ from app.database import get_db
 from app.models.history import HistoryLearningRecord, HistoryScenario
 from app.models.user import User
 from app.security import get_current_user
+from app.services import vision
 from app.services.ai_service import ai_service, validate_generated_text
 from app.services.point_service import award_points
 
@@ -20,6 +21,7 @@ router = APIRouter(prefix="/api/v1/history", tags=["党史情景"])
 class AskRequest(BaseModel):
     scenario_id: str
     question: str = Field(min_length=1, max_length=1000)
+    images: list[str] = Field(default_factory=list, max_length=2)
 
 
 class ChoiceRequest(BaseModel):
@@ -70,8 +72,13 @@ async def ask_question(data: AskRequest, user: User = Depends(get_current_user),
     if not scenario:
         raise HTTPException(status_code=404, detail="场景不存在")
     try:
+        images = vision.sanitize_images(data.images)
+    except vision.ImageInputError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    try:
         context = f"{scenario.background}\n{scenario.description}\n{scenario.knowledge_points_json}"
-        answer = validate_generated_text(await ai_service.history_ask(scenario.title, data.question, context), "党史回答")
+        answer = validate_generated_text(await ai_service.history_ask(scenario.title, data.question, context,
+                                                                     images=images or None), "党史回答")
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"AI 服务暂不可用：{exc}") from exc
     record = learning_record(db, user, scenario.id, create=True)

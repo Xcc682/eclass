@@ -76,7 +76,7 @@
           </div>
 
           <div v-else class="answer-sheet">
-            <div class="answer-sheet__label"><span>{{ message.response_kind==='assistant_intro' ? '助手说明' : '知识库回答' }}</span><small v-if="message.degraded">已使用降级检索</small></div>
+            <div class="answer-sheet__label"><span>{{ answerLabel(message.response_kind) }}</span><small v-if="message.degraded">已使用降级检索</small></div>
             <div v-if="message.citations?.length" class="citation-legend">方括号为原文依据编号，点击可查看对应资料</div>
             <template v-if="message.answer_blocks?.length">
               <div v-for="(block,index) in message.answer_blocks" :key="index" class="answer-block" :class="`answer-block--${block.type}`">
@@ -122,8 +122,21 @@
       </div>
 
       <footer class="composer">
-        <textarea ref="inputEl" v-model="question" maxlength="1000" placeholder="请输入问题；Enter 发送，Shift+Enter 换行" :disabled="sessionLoading" @keydown.enter.exact.prevent="send()" />
-        <div class="composer__side"><small>{{ question.length }}/1000</small><button :disabled="asking||sessionLoading||!question.trim()" @click="send()">{{ asking ? '等待中' : '发送' }}</button></div>
+        <div class="composer__main">
+          <div v-if="images.length" class="image-chips">
+            <figure v-for="(image, index) in images" :key="index" class="image-chip">
+              <img :src="image" alt="待发送图片" />
+              <button type="button" title="移除图片" @click="images.splice(index, 1)">×</button>
+            </figure>
+          </div>
+          <textarea ref="inputEl" v-model="question" maxlength="1000" placeholder="请输入问题；Enter 发送，Shift+Enter 换行" :disabled="sessionLoading" @keydown.enter.exact.prevent="send()" />
+        </div>
+        <div class="composer__side">
+          <button type="button" class="composer__attach" :disabled="images.length>=2||sessionLoading" @click="pickImage">＋图片</button>
+          <small>{{ question.length }}/1000</small>
+          <button :disabled="asking||sessionLoading||!question.trim()" @click="send()">{{ asking ? '等待中' : '发送' }}</button>
+        </div>
+        <input ref="fileEl" type="file" accept="image/png,image/jpeg,image/webp" hidden @change="onPickImages" />
       </footer>
     </main>
   </div>
@@ -161,6 +174,8 @@ const scopeMode = ref<"all" | "category" | "document">("all"),
   documentTitle = ref("");
 const libraryCount = ref(0),
   messagesEl = ref<HTMLElement>(),
+  fileEl = ref<HTMLInputElement | null>(null),
+  images = ref<string[]>([]),
   inputEl = ref<any>();
 const categories = ["党史", "党章党规", "时政", "思政课程", "重要讲话"];
 let alive = true,
@@ -171,6 +186,35 @@ let alive = true,
 
 function uid() {
   return `qa-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+function answerLabel(kind?: string) {
+  if (kind === "assistant_intro") return "助手说明";
+  if (kind === "personalized") return "学习档案回答";
+  if (kind === "multimodal") return "图片解读";
+  return "知识库回答";
+}
+const IMAGE_MAX_BYTES = 4 * 1024 * 1024;
+function pickImage() {
+  fileEl.value?.click();
+}
+function onPickImages(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file || images.value.length >= 2) return;
+  if (!/^image\/(png|jpeg|webp)$/.test(file.type)) {
+    uni.showToast({ title: "仅支持 PNG/JPEG/WebP 图片", icon: "none" });
+    return;
+  }
+  if (file.size > IMAGE_MAX_BYTES) {
+    uni.showToast({ title: "图片不得超过 4MB", icon: "none" });
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    if (typeof reader.result === "string") images.value.push(reader.result);
+  };
+  reader.readAsDataURL(file);
 }
 function isCurrent(token: number) {
   return alive && token === requestToken;
@@ -347,7 +391,9 @@ async function send(preset?: string, existing?: ViewMessage) {
   const value = (preset ?? existing?.content ?? question.value).trim();
   if (!value || asking.value || sessionLoading.value) return;
   const submissionId = existing?.submission_id || uid(),
-    token = ++requestToken;
+    token = ++requestToken,
+    attached = existing ? [] : images.value.slice();
+  if (attached.length) images.value = [];
   let userMessage = existing;
   if (!userMessage) {
     userMessage = {
@@ -369,7 +415,10 @@ async function send(preset?: string, existing?: ViewMessage) {
   sessionError.value = "";
   await scrollBottom();
   try {
-    const result = await knowledgeApi.ask(value, scopeOptions(submissionId));
+    const result = await knowledgeApi.ask(value, {
+      ...scopeOptions(submissionId),
+      images: attached.length ? attached : undefined,
+    });
     if (!isCurrent(token)) return;
     sessionId.value = result.session_id;
     userMessage.status = "sent";
@@ -542,4 +591,12 @@ onUnmounted(() => {
 /* #ifdef H5 */
 @container (max-width: 700px){.mobile-drawer{top:46px}.drawer-mask{top:46px}}
 /* #endif */
+.composer__main{flex:1;min-width:0;display:grid;gap:7px}
+.composer__main textarea{width:100%;box-sizing:border-box;min-height:66px}
+.image-chips{display:flex;flex-wrap:wrap;gap:8px}
+.image-chip{position:relative;width:72px;height:72px;margin:0;padding:0;border:1px solid #d8cbb8;background:#fff}
+.image-chip img{display:block;width:100%;height:100%;object-fit:cover}
+.image-chip button{position:absolute;top:-7px;right:-7px;width:20px;height:20px;border-radius:50%;background:#7d2924;color:#fff;font-size:12px;line-height:1}
+.composer__side .composer__attach{min-width:0;height:28px;padding:3px 9px;border:1px solid #d6c9b7;background:#faf5ec;color:#7d2924;font-size:12px;font-weight:400}
+.composer__side .composer__attach:disabled{opacity:.4}
 </style>

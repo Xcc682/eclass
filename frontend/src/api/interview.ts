@@ -115,8 +115,8 @@ export const interviewApi = {
   getScenario: (id: string) => api.get<InterviewScenario>(`/interviews/scenarios/${id}`),
   startPractice: (scenario_id: string, restart = false) =>
     api.post<InterviewPractice>('/interviews/practice/start', { scenario_id, restart }),
-  submitResponse: (practiceId: string, content: string, submission_id: string) =>
-    api.post<InterviewTurn>(`/interviews/practice/${practiceId}/respond`, { content, submission_id }, { timeout: 65000, toast: false }),
+  submitResponse: (practiceId: string, content: string, submission_id: string, images?: string[]) =>
+    api.post<InterviewTurn>(`/interviews/practice/${practiceId}/respond`, { content, submission_id, ...(images?.length ? { images } : {}) }, { timeout: 65000, toast: false }),
   endPractice: (practiceId: string) =>
     api.post<InterviewReport>(`/interviews/practice/${practiceId}/end`, undefined, { timeout: 65000, toast: false }),
   getReport: (practiceId: string) => api.get<InterviewReport>(`/interviews/practice/${practiceId}/report`),

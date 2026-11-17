@@ -5,6 +5,7 @@ import json
 import httpx
 
 from app.config import settings
+from app.services.vision import with_images
 
 DIMENSIONS = ["思想认识", "表达逻辑", "入党动机", "理论掌握", "应变能力"]
 DEBATE_DIMENSIONS = ["逻辑严谨性", "知识运用", "思辨深度", "语言表达", "临场反应"]
@@ -420,6 +421,7 @@ class AIService:
                     "description": (
                         "检索已审核的思政知识资料。凡是询问人物、历史、制度、理论、政策、"
                         "概念、比较、原因、流程或其他事实性内容，都必须调用此工具。"
+                        "询问学生本人的历史练习、学习档案、薄弱环节、成绩回顾，也属于此工具。"
                     ),
                     "parameters": {
                         "type": "object",
@@ -440,7 +442,8 @@ class AIService:
                     "name": "describe_assistant",
                     "description": (
                         "仅用于用户询问当前助手是谁、问候当前助手、当前助手能做什么，"
-                        "或如何使用当前知识问答功能。不得用于回答任何外部人物或知识事实。"
+                        "或如何使用当前知识问答功能。不得用于回答任何外部人物或知识事实，"
+                        "也不得用于询问学员本人的历史练习、成绩或薄弱点。"
                     ),
                     "parameters": {
                         "type": "object",
@@ -549,20 +552,27 @@ class AIService:
     def _interview_system_prompt(self, difficulty: str) -> str:
         return INTERVIEW_PROMPTS.get(difficulty, INTERVIEW_PROMPTS["intermediate"])
 
-    async def interview_start(self, difficulty: str = "beginner") -> dict:
+    async def interview_start(self, difficulty: str = "beginner", learner_context: str = "") -> dict:
         system_prompt = self._interview_system_prompt(difficulty)
-        msgs = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": '请开始一次入党谈话，先做简单开场寒暄并提第一个问题。phase 设为"开场寒暄"。直接回复JSON。'}
-        ]
+        msgs = [{"role": "system", "content": system_prompt}]
+        if learner_context:
+            # 历史练习档案作为独立系统消息注入，与场景提示词分开，便于日后审计与替换
+            msgs.append({"role": "system", "content": learner_context})
+        msgs.append({"role": "user", "content": '请开始一次入党谈话，先做简单开场寒暄并提第一个问题。phase 设为"开场寒暄"。直接回复JSON。'})
         resp = await self._call_api(msgs, temperature=0.8)
         return validate_interview_turn(self._parse_json(resp))
 
-    async def interview_respond(self, conversation: list[dict], difficulty: str = "intermediate", phase: str = "自我认知", evaluated_phase: str = "开场寒暄", final_turn: bool = False) -> dict:
+    async def interview_respond(self, conversation: list[dict], difficulty: str = "intermediate", phase: str = "自我认知", evaluated_phase: str = "开场寒暄", final_turn: bool = False, images: list[str] | None = None) -> dict:
         system_prompt = self._interview_system_prompt(difficulty)
         msgs = [{"role": "system", "content": system_prompt}]
         for turn in conversation:
             msgs.append({"role": "user" if turn["role"] == "user" else "assistant", "content": turn["content"]})
+        if images:
+            # 图片只挂在本轮回答上：学生拍下的手写思想汇报、证明材料等
+            for item in reversed(msgs):
+                if item["role"] == "user":
+                    item["content"] = with_images(str(item["content"]), images)
+                    break
         instruction = (
             f"请评估学生刚才在【{evaluated_phase}】阶段的回答并给出点评。"
             + ("这是最后一轮，不再提出新问题，question 写一段简短收束语，finished=true。" if final_turn else f"下一问题必须属于【{phase}】阶段，finished=false。")
@@ -589,10 +599,16 @@ class AIService:
         return await self._call_api(msgs, temperature=0.5, max_tokens=1500)
 
     # ===== History Learning =====
-    async def history_ask(self, scenario_title: str, question: str, context: str = "") -> str:
+    async def history_ask(self, scenario_title: str, question: str, context: str = "",
+                          images: list[str] | None = None) -> str:
         msgs = [
             {"role": "system", "content": HISTORY_TUTOR_PROMPT},
-            {"role": "user", "content": f"我们正在学习'{scenario_title}'这段历史。可用资料：\n{context}\n\n学生问：{question}\n请只根据可用资料用200字以内回答；资料无法支持时明确说明当前情景资料没有足够依据。"}
+            {"role": "user", "content": with_images(
+                f"我们正在学习'{scenario_title}'这段历史。可用资料：\n{context}\n\n学生问：{question}\n"
+                "若附有图片，请结合图片中的文字或场景作答。"
+                "请只根据可用资料用200字以内回答；资料无法支持时明确说明当前情景资料没有足够依据。",
+                images,
+            )},
         ]
         return await self._call_api(msgs, temperature=0.7, max_tokens=1500)
 
@@ -604,10 +620,14 @@ class AIService:
         ]
         return await self._call_api(msgs, temperature=0.7, max_tokens=1500)
 
-    async def tour_ask(self, site_name: str, question: str) -> str:
+    async def tour_ask(self, site_name: str, question: str, images: list[str] | None = None) -> str:
         msgs = [
             {"role": "system", "content": TOUR_GUIDE_PROMPT},
-            {"role": "user", "content": f"在'{site_name}'参观中，学生问：{question}\n请回答，150字以内。"}
+            {"role": "user", "content": with_images(
+                f"在'{site_name}'参观中，学生问：{question}\n"
+                "若附有现场图片，请结合图片中的展陈内容回答。请回答，150字以内。",
+                images,
+            )},
         ]
         return await self._call_api(msgs, temperature=0.7, max_tokens=1500)
 
@@ -637,7 +657,7 @@ class AIService:
         ]
         return await self._call_api(msgs, temperature=0.8, max_tokens=1500)
 
-    async def debate_argue(self, topic: str, stance: str, argument: str, conversation: list[dict], stage: str = "rebuttal", step: str = "user_rebuttal", evidence: list[dict] | None = None) -> dict:
+    async def debate_argue(self, topic: str, stance: str, argument: str, conversation: list[dict], stage: str = "rebuttal", step: str = "user_rebuttal", evidence: list[dict] | None = None, images: list[str] | None = None) -> dict:
         side = "正方" if stance == "con" else "反方"
         stage_instruction = DEBATE_STEP_PROMPTS.get(step, DEBATE_STAGE_PROMPTS.get(stage, DEBATE_STAGE_PROMPTS["rebuttal"]))
         history = _recent_debate_history(
@@ -651,9 +671,13 @@ class AIService:
         msgs = [
             {"role": "system", "content": f"你同时扮演两个角色，务必严格分开：1) {side}方辩手——用 argument 字段输出你作为对手的赛场回应；2) 用户的陪练导师——用 coach_feedback 和 argument_map 站在用户一方，针对其刚提交的陈词分析优点、指出可改进处并给出下一步建议，绝不用对手口吻挑刺。辩题：{topic}。{stage_instruction}\n"
              "coach_feedback 和 argument_map 必须只分析用户刚提交的陈词，不能分析或复述你自己的回应。保持礼貌但犀利，只输出JSON。"},
-            {"role": "user", "content": f"最近辩论交锋（完整记录已保存，本次仅提供最近内容）：\n{history or '无'}\n\n用户最新陈词：{argument}\n用户引用资料：\n{evidence_text or '无'}\n"
-             "请回复JSON。argument_map 中 claims 提取用户主张，evidence 提取用户使用的事实或资料，reasoning 提取用户从依据到主张的推理链，gaps 指出用户陈词尚未补齐的逻辑缺口；coach_feedback 也只评价用户本轮表现。"
-             "格式：{\"argument\":\"你的赛场回应\",\"coach_feedback\":{\"stage_fit\":\"阶段匹配评价\",\"strength\":\"用户本轮优势\",\"next_action\":\"给用户的一条可执行建议\"},\"argument_map\":{\"claims\":[\"用户主张\"],\"evidence\":[\"用户证据\"],\"reasoning\":[\"用户推理链\"],\"gaps\":[\"用户逻辑缺口\"]}}"}
+            {"role": "user", "content": with_images(
+                f"最近辩论交锋（完整记录已保存，本次仅提供最近内容）：\n{history or '无'}\n\n用户最新陈词：{argument}\n用户引用资料：\n{evidence_text or '无'}\n"
+                + ("用户随本轮陈词附上了图片，请将其中的手写提纲、图表或史料截图作为陈词证据一并评析。\n" if images else "")
+                + "请回复JSON。argument_map 中 claims 提取用户主张，evidence 提取用户使用的事实或资料，reasoning 提取用户从依据到主张的推理链，gaps 指出用户陈词尚未补齐的逻辑缺口；coach_feedback 也只评价用户本轮表现。"
+                "格式：{\"argument\":\"你的赛场回应\",\"coach_feedback\":{\"stage_fit\":\"阶段匹配评价\",\"strength\":\"用户本轮优势\",\"next_action\":\"给用户的一条可执行建议\"},\"argument_map\":{\"claims\":[\"用户主张\"],\"evidence\":[\"用户证据\"],\"reasoning\":[\"用户推理链\"],\"gaps\":[\"用户逻辑缺口\"]}}",
+                images,
+            )}
         ]
         resp = await self._call_api(
             msgs, temperature=0.35, max_tokens=2500,
@@ -721,6 +745,7 @@ class AIService:
         contexts: list[dict],
         history: list[dict] | None = None,
         tool_call: dict | None = None,
+        images: list[str] | None = None,
     ) -> dict | str:
         evidence_items = [
             {
@@ -748,8 +773,10 @@ class AIService:
                 "格式：{\"blocks\":[{\"type\":\"heading|paragraph|list_item\",\"text\":\"不含[1]等标记的正文\",\"citations\":[1]}],"
                 "\"follow_up_suggestions\":[\"可继续追问的问题\"]}。标题块可以没有引用，其他块必须有引用。"
             )}
-        user_message = {"role": "user", "content": (
+        user_message = {"role": "user", "content": with_images(
             f"最近对话：\n{history_text or '无'}\n\n当前问题：{question}"
+            + ("\n用户附有图片，请结合图片中的文字或版面理解问题；图片内容同样不能替代<evidence>作为引用依据。" if images else ""),
+            images,
         )}
         messages = [system_message, user_message]
         tools = None

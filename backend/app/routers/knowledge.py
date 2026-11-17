@@ -31,7 +31,7 @@ from app.models.knowledge import (
 )
 from app.models.user import User
 from app.security import get_current_user, require_role
-from app.services import knowledge_agent, safety
+from app.services import knowledge_agent, safety, vision
 from app.services.ai_service import ai_service
 from app.services.knowledge_service import (
     ALLOWED_MIME_TYPES,
@@ -61,6 +61,7 @@ class AskRequest(BaseModel):
     session_id: str | None = None
     submission_id: str | None = Field(default=None, min_length=8, max_length=64)
     document_ids: list[str] = Field(default_factory=list, max_length=20)
+    images: list[str] = Field(default_factory=list, max_length=2)
 
 
 class SessionUpdateRequest(BaseModel):
@@ -360,6 +361,43 @@ def _normalize_answer(raw: object, citations: list[dict], question: str = "", co
     suggestions = _supported_suggestions(raw.get("follow_up_suggestions", []), evidence_text, question)
     return {"answer": "\n".join(lines), "answer_blocks": valid_blocks, "citations": selected,
             "used_citation_indexes": list(range(1, len(selected) + 1)), "follow_up_suggestions": suggestions}
+
+
+LEARNER_TOOLS = {"get_learning_profile", "list_my_practices", "get_practice_detail"}
+
+
+def _uncited_answer(raw: object) -> dict | None:
+    """不带知识库引用的答案：用于学习档案问答与图片解读。
+
+    这两类内容分别来自本人练习记录与用户上传的图片，都不是可引用的已审核资料；
+    只有模型确实给出了正文时才启用，否则返回 None 交给「资料不足」处理。
+    """
+    recovered = _recover_structured_answer(raw)
+    value = recovered if recovered is not None else raw
+    blocks: list[dict] = []
+    suggestions: list[str] = []
+    if isinstance(value, dict):
+        for item in value.get("blocks", []) if isinstance(value.get("blocks"), list) else []:
+            if not isinstance(item, dict):
+                continue
+            kind = item.get("type") if item.get("type") in {"heading", "paragraph", "list_item"} else "paragraph"
+            text_value = re.sub(r"\[(\d+)\]", "", str(item.get("text", ""))).strip()
+            if text_value:
+                blocks.append({"type": kind, "text": text_value, "citations": []})
+        candidates = value.get("follow_up_suggestions")
+        suggestions = [str(item).strip()[:80] for item in candidates if str(item).strip()][:3] if isinstance(candidates, list) else []
+    elif isinstance(value, str) and value.strip():
+        blocks = [{"type": "paragraph", "text": value.strip(), "citations": []}]
+    if not blocks:
+        return None
+    lines = [("- " if block["type"] == "list_item" else "") + block["text"] for block in blocks]
+    return {
+        "answer": "\n".join(lines),
+        "answer_blocks": blocks,
+        "citations": [],
+        "used_citation_indexes": [],
+        "follow_up_suggestions": suggestions,
+    }
 
 
 def _message_payload(item: KnowledgeMessage) -> dict:
@@ -864,6 +902,10 @@ async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user)
     verdict = safety.check_input(data.question)
     if not verdict.allowed:
         raise HTTPException(status_code=400, detail=verdict.reason)
+    try:
+        images = vision.sanitize_images(data.images)
+    except vision.ImageInputError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
     started_at = time.perf_counter()
     submission_id = data.submission_id or uuid.uuid4().hex
     session = db.get(KnowledgeSession, data.session_id) if data.session_id else None
@@ -939,22 +981,26 @@ async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user)
         "tool_call_id": f"fallback-{submission_id}",
     }
     tool_started_at = time.perf_counter()
-    try:
-        tool_call = await asyncio.wait_for(
-            ai_service.select_knowledge_tool(data.question, history_payload),
-            timeout=min(12.0, settings.KNOWLEDGE_LLM_TIMEOUT_SECONDS),
-        )
-        selected_tool = tool_call["name"]
-        logger.info(
-            "[knowledge] tool_selection_done request_id=%s tool=%s elapsed_ms=%s",
-            submission_id, selected_tool, int((time.perf_counter() - tool_started_at) * 1000),
-        )
-    except Exception as exc:
-        degraded = True
-        logger.warning(
-            "[knowledge] tool_selection_fallback request_id=%s error=%s fallback=search_knowledge elapsed_ms=%s",
-            submission_id, exc.__class__.__name__, int((time.perf_counter() - tool_started_at) * 1000),
-        )
+    if images:
+        # 带图的提问一律走资料检索 + 图片解读，避免被意图路由误判为「询问助手能力」
+        logger.info("[knowledge] tool_selection_skipped request_id=%s reason=images", submission_id)
+    else:
+        try:
+            tool_call = await asyncio.wait_for(
+                ai_service.select_knowledge_tool(data.question, history_payload),
+                timeout=min(12.0, settings.KNOWLEDGE_LLM_TIMEOUT_SECONDS),
+            )
+            selected_tool = tool_call["name"]
+            logger.info(
+                "[knowledge] tool_selection_done request_id=%s tool=%s elapsed_ms=%s",
+                submission_id, selected_tool, int((time.perf_counter() - tool_started_at) * 1000),
+            )
+        except Exception as exc:
+            degraded = True
+            logger.warning(
+                "[knowledge] tool_selection_fallback request_id=%s error=%s fallback=search_knowledge elapsed_ms=%s",
+                submission_id, exc.__class__.__name__, int((time.perf_counter() - tool_started_at) * 1000),
+            )
 
     citations: list[dict] = []
     contexts: list[dict] = []
@@ -973,7 +1019,8 @@ async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user)
             agent_started_at = time.perf_counter()
             try:
                 agent_result = await asyncio.wait_for(
-                    knowledge_agent.run(data.question, history_payload, data.category, document_ids or None, db),
+                    knowledge_agent.run(data.question, history_payload, data.category, document_ids or None, db,
+                                        user_id=user.id, images=images or None),
                     timeout=settings.KNOWLEDGE_AGENT_TIMEOUT_SECONDS,
                 )
                 logger.info(
@@ -984,6 +1031,12 @@ async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user)
                     int((time.perf_counter() - agent_started_at) * 1000),
                 )
                 agent_contexts = agent_result.contexts[:6]
+                used_learner_tools = any(
+                    str(entry.get("tool") or "") in LEARNER_TOOLS for entry in agent_result.trace
+                )
+                allow_uncited = used_learner_tools or bool(images)
+                agent_kind = "rag"
+                agent_answer = None
                 if agent_contexts:
                     agent_citations = [{
                         "index": index,
@@ -996,7 +1049,15 @@ async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user)
                         "excerpt": item["content"][:300],
                     } for index, item in enumerate(agent_contexts, start=1)]
                     agent_answer = _normalize_answer(agent_result.answer, agent_citations, data.question, agent_contexts)
-                else:
+                if (not agent_answer or not agent_answer["citations"]) and allow_uncited:
+                    # 读了本人档案或解读图片、答案又没有命中知识库引用：保留正文但不附引用，
+                    # 避免把个性化分析与图片解读误判为「资料不足」
+                    uncited = _uncited_answer(agent_result.answer)
+                    if uncited is not None:
+                        agent_answer = uncited
+                        agent_kind = "multimodal" if images and not used_learner_tools else "personalized"
+                if agent_answer is None or (not agent_answer["citations"] and agent_kind not in {"personalized", "multimodal"}):
+                    agent_kind = "no_evidence"
                     agent_answer = {
                         "answer": "当前知识库没有足够依据。你可以换一种更具体的问法，或先在资料库中搜索相关文件。",
                         "answer_blocks": [], "citations": [], "used_citation_indexes": [], "follow_up_suggestions": [],
@@ -1004,7 +1065,7 @@ async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user)
                 return _finish_answer(
                     db=db, session=session, user_message=user_message, submission_id=submission_id,
                     normalized=agent_answer, degraded=False, selected_tool="search_knowledge",
-                    started_at=started_at, tool_trace=agent_result.trace,
+                    started_at=started_at, tool_trace=agent_result.trace, response_kind=agent_kind,
                 )
             except HTTPException:
                 raise
@@ -1064,12 +1125,12 @@ async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user)
             "chunk_index": item["chunk_index"],
             "excerpt": item["content"][:300],
         } for index, item in enumerate(contexts, start=1)]
-        if contexts:
+        if contexts or images:
             try:
                 logger.info("[knowledge] llm_answer_start request_id=%s citations=%s", submission_id, len(citations))
                 raw_answer = await asyncio.wait_for(
                     ai_service.knowledge_answer(
-                        data.question, contexts, history_payload, tool_call=tool_call,
+                        data.question, contexts, history_payload, tool_call=tool_call, images=images or None,
                     ),
                     timeout=settings.KNOWLEDGE_LLM_TIMEOUT_SECONDS,
                 )
@@ -1087,6 +1148,12 @@ async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user)
                 db.commit()
                 raise HTTPException(status_code=503, detail="AI 服务暂不可用，请稍后重试") from exc
             response_kind = "rag" if normalized["citations"] else "no_evidence"
+            if not normalized["citations"] and images:
+                uncited = _uncited_answer(raw_answer)
+                if uncited is not None:
+                    # 只有图片、没有命中资料：输出图片解读，不附引用编号
+                    normalized = uncited
+                    response_kind = "multimodal"
         else:
             normalized = {
                 "answer": "当前知识库没有足够依据。你可以换一种更具体的问法，或先在资料库中搜索相关文件。",

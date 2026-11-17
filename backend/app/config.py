@@ -39,6 +39,9 @@ class Settings(BaseSettings):
     TTS_STORAGE_DIR: str = "storage/tts"
     TTS_MAX_CHARS: int = 500
     TTS_DEFAULT_VOICE: str = "zh-CN-XiaoxiaoNeural"
+    # 多模态：对话可附带图片（data URL），数量与体积在这里收敛
+    VISION_MAX_IMAGES: int = 2
+    VISION_MAX_IMAGE_CHARS: int = 8_000_000
     # Debate turns can contain a long transcript. Bound the prompt independently
     # from the stored session and allow slightly more time to generate a reply.
     DEBATE_LLM_TIMEOUT_SECONDS: float = 60.0

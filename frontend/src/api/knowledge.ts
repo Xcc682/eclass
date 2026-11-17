@@ -35,7 +35,7 @@ export interface Citation {
   relevance_reason?: string
 }
 export interface AnswerBlock { type: 'heading' | 'paragraph' | 'list_item'; text: string; citations: number[] }
-export type KnowledgeResponseKind = 'rag' | 'assistant_intro' | 'no_evidence'
+export type KnowledgeResponseKind = 'rag' | 'assistant_intro' | 'personalized' | 'multimodal' | 'no_evidence'
 export interface KnowledgeMessage {
   id: string
   role: 'user' | 'assistant'
@@ -150,7 +150,7 @@ export const knowledgeApi = {
   getDocumentChunk: (id: string, index: number) => api.get<{ id: string; document_id: string; chunk_index: number; content: string }>(`/knowledge/documents/${id}/chunks/${index}`),
   getTemplates: () => api.get<KnowledgeTemplate[]>('/knowledge/templates'),
   search: (query: string, category?: string) => api.post<KnowledgeDocument[]>('/knowledge/search', { query, category }),
-  ask: (question: string, options: { session_id?: string; category?: string; document_ids?: string[]; submission_id?: string } = {}) =>
+  ask: (question: string, options: { session_id?: string; category?: string; document_ids?: string[]; submission_id?: string; images?: string[] } = {}) =>
     api.post<KnowledgeAskResult>('/knowledge/ask', { question, ...options }, { timeout: 65000, toast: false }),
   status: () => api.get<{ mode: string; vector_healthy: boolean; embedding_loaded: boolean; published_documents: number; indexed_chunks: number; llm_configured: boolean }>('/knowledge/status'),
   sessions: (q = '', page = 1, page_size = 30) => api.get<KnowledgeSession[]>(`/knowledge/sessions${queryString({ q, page, page_size })}`),
