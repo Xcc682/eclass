@@ -293,6 +293,8 @@ def add_image(
     paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
     paragraph.paragraph_format.space_before = Pt(6)
     paragraph.paragraph_format.space_after = Pt(3)
+    # 正文是多倍行距，图片所在的段落必须改回单倍，否则行高按倍数放大
+    paragraph.paragraph_format.line_spacing = 1.0
     try:
         embed = shrink_for_doc(image_path, workdir)
         paragraph.add_run().add_picture(str(embed), width=Cm(width_cm))
@@ -301,6 +303,7 @@ def add_image(
 
     cap = document.add_paragraph()
     cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    cap.paragraph_format.line_spacing = 1.0
     run = cap.add_run(caption)
     apply_font(run, BODY_LATIN, BODY_CJK, size=9)
     run.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
@@ -616,6 +619,7 @@ def build(screenshot_dir: Path | None) -> None:
     shot_dir = screenshot_dir if (screenshot_dir and screenshot_dir.is_dir()) else None
     blocks = group_figures(parse_markdown(md), shot_dir)
     toc_done = False
+    body_pending_break = False
 
     for block in blocks:
         kind = block[0]
@@ -637,8 +641,9 @@ def build(screenshot_dir: Path | None) -> None:
                 if not has_cover:
                     document.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
                 add_toc(document)
-                document.add_paragraph().add_run().add_break(WD_BREAK.PAGE)
                 toc_done = True
+                # 正文首段用「段前分页」，空段落加分页符会在目录正好占满一页时多出一张空白页
+                body_pending_break = True
             # 封面区域的标题用普通段落排版，不用 Heading 样式，避免被目录收录
             if not toc_done:
                 cover_sizes = {2: 18, 3: 15, 4: 12}
@@ -653,6 +658,9 @@ def build(screenshot_dir: Path | None) -> None:
             # Markdown 的 ## -> Word Heading 1，### -> Heading 2，#### -> Heading 3
             word_level = max(1, min(level - 1, 3))
             heading = document.add_heading("", level=word_level)
+            if body_pending_break:
+                heading.paragraph_format.page_break_before = True
+                body_pending_break = False
             run = heading.add_run(text)
             apply_font(run, HEADING_LATIN, HEADING_CJK, bold=True)
             continue
@@ -694,8 +702,18 @@ def build(screenshot_dir: Path | None) -> None:
 
         if kind == "figurerow":
             entries = []
+            width_hint = None
             for rel_path, caption in [(b[1], strip_inline(b[2])) for b in block[1]]:
+                # 允许 `![图注](文件名|宽度cm)` 单独指定插图宽度
+                if "|" in rel_path:
+                    rel_path, hint = rel_path.split("|", 1)
+                    try:
+                        width_hint = float(hint)
+                    except ValueError:
+                        width_hint = None
                 image_path = shot_dir / rel_path if shot_dir else Path(rel_path)
+                if not image_path.is_file() and (ROOT / rel_path).is_file():
+                    image_path = ROOT / rel_path     # 架构图等直接放在 output 下
                 if image_path.is_file():
                     entries.append((image_path, caption))
                 else:
@@ -707,7 +725,10 @@ def build(screenshot_dir: Path | None) -> None:
             # 竖图一律按并排尺寸插入，单张时也保持与其他图同样高度；
             # 只有横图（沉浸式页面）独占一行、铺满版心。
             if len(entries) == 1 and _aspect(entries[0][0]) <= 1.5:
-                add_image(document, entries[0][0], entries[0][1], tmp_dir)
+                add_image(
+                    document, entries[0][0], entries[0][1], tmp_dir,
+                    max_width_cm=width_hint or 14.0,
+                )
             else:
                 add_image_row(document, entries, tmp_dir)
             continue

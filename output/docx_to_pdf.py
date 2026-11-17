@@ -39,8 +39,9 @@ def main() -> int:
             if style_name.startswith("TOC") or style_name.startswith("目录"):
                 para.Format.SpaceBefore = 0
                 para.Format.SpaceAfter = 0
-                para.Format.LineSpacingRule = 5  # wdLineSpaceMultiple
-                para.Format.LineSpacing = 1.2 * 12
+                para.Range.Font.Size = 10
+                para.Format.LineSpacingRule = 4  # wdLineSpaceExactly
+                para.Format.LineSpacing = 12.0
         doc.Repaginate()
 
         doc.Save()
