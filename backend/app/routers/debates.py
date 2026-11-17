@@ -16,6 +16,7 @@ from app.models.domain import GeneratedReport
 from app.models.knowledge import KnowledgeChunk, KnowledgeDocument
 from app.models.user import User
 from app.security import get_current_user
+from app.services import safety
 from app.services.ai_service import ai_service, validate_debate_feedback, validate_debate_turn, validate_topics
 from app.services.knowledge_service import retrieve
 from app.services.point_service import award_points
@@ -315,6 +316,9 @@ def search_evidence(session_id: str, data: EvidenceSearchRequest, user: User = D
 
 @router.post("/practice/{session_id}/argue")
 async def submit_argument(session_id: str, data: ArgumentRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    verdict = safety.check_input(data.argument)
+    if not verdict.allowed:
+        raise HTTPException(status_code=400, detail=verdict.reason)
     record = owned(db, session_id, user)
     if record.is_legacy or record.flow_version != FLOW_VERSION:
         raise HTTPException(status_code=409, detail="旧版辩论仅供查看，请重新开始新版训练")

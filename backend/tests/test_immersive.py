@@ -1,3 +1,5 @@
+# ruff: noqa: E402
+# 说明：必须先调用 configure_test_environment()，再导入读取环境变量的 app 模块。
 import unittest
 import uuid
 from unittest.mock import AsyncMock, patch
@@ -10,7 +12,6 @@ from fastapi.testclient import TestClient
 
 from app.immersive_branch_content import BRANCH_STORIES
 from app.main import app
-
 
 STAGES = ("route", "evidence", "judgment")
 

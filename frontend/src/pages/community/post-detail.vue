@@ -37,6 +37,7 @@
             v-for="file in post.attachments"
             :key="file.id"
             :src="assetUrl(file.url)"
+            loading="lazy"
             @click="preview(file.url)"
           />
         </div>

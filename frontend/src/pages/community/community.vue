@@ -198,6 +198,7 @@
                 v-for="file in post.attachments.slice(0, 3)"
                 :key="file.id"
                 :src="assetUrl(file.url)"
+                loading="lazy"
               />
             </div>
             <footer>

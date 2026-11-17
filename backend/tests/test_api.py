@@ -1,3 +1,5 @@
+# ruff: noqa: E402
+# 说明：必须先调用 configure_test_environment()，再导入读取环境变量的 app 模块。
 import asyncio
 import json
 import unittest
@@ -14,8 +16,12 @@ from app.database import SessionLocal
 from app.main import app
 from app.models.user import User
 from app.services.ai_service import (
-    AIResponseValidationError, AIService, validate_debate_feedback, validate_debate_turn,
-    validate_interview_report, validate_interview_turn,
+    AIResponseValidationError,
+    AIService,
+    validate_debate_feedback,
+    validate_debate_turn,
+    validate_interview_report,
+    validate_interview_turn,
 )
 
 

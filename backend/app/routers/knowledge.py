@@ -31,6 +31,7 @@ from app.models.knowledge import (
 )
 from app.models.user import User
 from app.security import get_current_user, require_role
+from app.services import knowledge_agent, safety
 from app.services.ai_service import ai_service
 from app.services.knowledge_service import (
     ALLOWED_MIME_TYPES,
@@ -800,8 +801,69 @@ def search_knowledge(data: SearchRequest, _: User = Depends(get_current_user), d
     return {"code": 0, "data": documents}
 
 
+def _finish_answer(
+    *,
+    db: Session,
+    session: KnowledgeSession,
+    user_message: KnowledgeMessage,
+    submission_id: str,
+    normalized: dict,
+    degraded: bool,
+    selected_tool: str,
+    started_at: float,
+    tool_trace: list[dict] | None = None,
+    response_kind: str | None = None,
+) -> dict:
+    """落库并组装问答接口的统一返回结构，固定检索与 Agent 两条链路共用。"""
+    normalized = dict(normalized)
+    normalized["answer"] = safety.mask_output(normalized["answer"])
+    normalized["answer_blocks"] = [
+        {**block, "text": safety.mask_output(block["text"])}
+        if isinstance(block, dict) and isinstance(block.get("text"), str) else block
+        for block in normalized.get("answer_blocks") or []
+    ]
+    answer_meta = {
+        "answer_blocks": normalized["answer_blocks"],
+        "used_citation_indexes": normalized["used_citation_indexes"],
+        "follow_up_suggestions": normalized["follow_up_suggestions"],
+        "response_kind": response_kind or ("rag" if normalized["citations"] else "no_evidence"),
+        "selected_tool": selected_tool,
+        "degraded": degraded,
+        "tool_trace": tool_trace or [],
+    }
+    assistant_message = KnowledgeMessage(
+        session_id=session.id, role="assistant", content=normalized["answer"],
+        citations_json=json.dumps(normalized["citations"], ensure_ascii=False),
+        answer_json=json.dumps(answer_meta, ensure_ascii=False),
+        submission_id=submission_id, status="sent",
+    )
+    db.add(assistant_message)
+    user_message = db.get(KnowledgeMessage, user_message.id)
+    user_message.status = "sent"
+    user_message.error = None
+    session.updated_at = datetime.utcnow()
+    db.flush()
+    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+    logger.info("[knowledge] ask_done request_id=%s degraded=%s evidence=%s elapsed_ms=%s",
+                submission_id, degraded, len(normalized["citations"]), elapsed_ms)
+    return {"code": 0, "data": {
+        "answer": normalized["answer"], "session_id": session.id, "message_id": assistant_message.id,
+        "submission_id": submission_id, "status": "sent", "citations": normalized["citations"],
+        "answer_blocks": normalized["answer_blocks"],
+        "used_citation_indexes": normalized["used_citation_indexes"],
+        "follow_up_suggestions": normalized["follow_up_suggestions"],
+        "response_kind": answer_meta["response_kind"],
+        "selected_tool": selected_tool,
+        "degraded": degraded, "cached": False,
+        "tool_trace": answer_meta["tool_trace"],
+    }}
+
+
 @router.post("/ask")
 async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    verdict = safety.check_input(data.question)
+    if not verdict.allowed:
+        raise HTTPException(status_code=400, detail=verdict.reason)
     started_at = time.perf_counter()
     submission_id = data.submission_id or uuid.uuid4().hex
     session = db.get(KnowledgeSession, data.session_id) if data.session_id else None
@@ -905,6 +967,54 @@ async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user)
         if "\n追问：" in retrieval_query and retrieval_query.split("\n追问：", 1)[0] not in tool_query:
             tool_query = f"{retrieval_query}\n检索改写：{tool_query}"
         retrieval_query = tool_query[:1000]
+        if settings.KNOWLEDGE_AGENT_ENABLED:
+            # 意图已确认为查资料：交给自主检索 Agent 决定检索词与调用轮次，
+            # 任一环节失败都退回下面的固定检索，保证问答始终有结果。
+            agent_started_at = time.perf_counter()
+            try:
+                agent_result = await asyncio.wait_for(
+                    knowledge_agent.run(data.question, history_payload, data.category, document_ids or None, db),
+                    timeout=settings.KNOWLEDGE_AGENT_TIMEOUT_SECONDS,
+                )
+                logger.info(
+                    "[knowledge] agent_done request_id=%s steps=%s tools=%s evidence=%s elapsed_ms=%s",
+                    submission_id, agent_result.steps,
+                    ",".join(str(item.get("tool")) for item in agent_result.trace) or "none",
+                    len(agent_result.contexts),
+                    int((time.perf_counter() - agent_started_at) * 1000),
+                )
+                agent_contexts = agent_result.contexts[:6]
+                if agent_contexts:
+                    agent_citations = [{
+                        "index": index,
+                        "document_id": item["document_id"],
+                        "document_title": item["title"],
+                        "source": item["source"],
+                        "source_url": item["source_url"],
+                        "chunk_id": item["chunk_id"],
+                        "chunk_index": item["chunk_index"],
+                        "excerpt": item["content"][:300],
+                    } for index, item in enumerate(agent_contexts, start=1)]
+                    agent_answer = _normalize_answer(agent_result.answer, agent_citations, data.question, agent_contexts)
+                else:
+                    agent_answer = {
+                        "answer": "当前知识库没有足够依据。你可以换一种更具体的问法，或先在资料库中搜索相关文件。",
+                        "answer_blocks": [], "citations": [], "used_citation_indexes": [], "follow_up_suggestions": [],
+                    }
+                return _finish_answer(
+                    db=db, session=session, user_message=user_message, submission_id=submission_id,
+                    normalized=agent_answer, degraded=False, selected_tool="search_knowledge",
+                    started_at=started_at, tool_trace=agent_result.trace,
+                )
+            except HTTPException:
+                raise
+            except Exception as exc:
+                logger.warning(
+                    "[knowledge] agent_fallback request_id=%s error=%s elapsed_ms=%s",
+                    submission_id, exc.__class__.__name__,
+                    int((time.perf_counter() - agent_started_at) * 1000),
+                )
+
         retrieval_started_at = time.perf_counter()
         try:
             contexts = await asyncio.wait_for(
@@ -984,39 +1094,11 @@ async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user)
             }
             response_kind = "no_evidence"
 
-    answer_meta = {
-        "answer_blocks": normalized["answer_blocks"],
-        "used_citation_indexes": normalized["used_citation_indexes"],
-        "follow_up_suggestions": normalized["follow_up_suggestions"],
-        "response_kind": response_kind,
-        "selected_tool": selected_tool,
-        "degraded": degraded,
-    }
-    assistant_message = KnowledgeMessage(
-        session_id=session.id, role="assistant", content=normalized["answer"],
-        citations_json=json.dumps(normalized["citations"], ensure_ascii=False),
-        answer_json=json.dumps(answer_meta, ensure_ascii=False),
-        submission_id=submission_id, status="sent",
+    return _finish_answer(
+        db=db, session=session, user_message=user_message, submission_id=submission_id,
+        normalized=normalized, degraded=degraded, selected_tool=selected_tool, started_at=started_at,
+        response_kind=response_kind,
     )
-    db.add(assistant_message)
-    user_message = db.get(KnowledgeMessage, user_message.id)
-    user_message.status = "sent"
-    user_message.error = None
-    session.updated_at = datetime.utcnow()
-    db.flush()
-    elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-    logger.info("[knowledge] ask_done request_id=%s degraded=%s evidence=%s elapsed_ms=%s",
-                submission_id, degraded, len(normalized["citations"]), elapsed_ms)
-    return {"code": 0, "data": {
-        "answer": normalized["answer"], "session_id": session.id, "message_id": assistant_message.id,
-        "submission_id": submission_id, "status": "sent", "citations": normalized["citations"],
-        "answer_blocks": normalized["answer_blocks"],
-        "used_citation_indexes": normalized["used_citation_indexes"],
-        "follow_up_suggestions": normalized["follow_up_suggestions"],
-        "response_kind": response_kind,
-        "selected_tool": selected_tool,
-        "degraded": degraded, "cached": False,
-    }}
 
 
 @router.post("/favorites/{document_id}")

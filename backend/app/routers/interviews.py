@@ -15,6 +15,7 @@ from app.models.domain import GeneratedReport
 from app.models.interview import InterviewMessage, InterviewPracticeRecord, InterviewScenario
 from app.models.user import User
 from app.security import get_current_user, get_optional_user
+from app.services import safety
 from app.services.ai_service import DIMENSIONS, ai_service, validate_interview_report, validate_interview_turn
 from app.services.point_service import award_points
 
@@ -289,6 +290,9 @@ async def start_practice(data: StartRequest, user: User = Depends(get_current_us
 
 @router.post("/practice/{practice_id}/respond")
 async def respond(practice_id: str, data: RespondRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    verdict = safety.check_input(data.content)
+    if not verdict.allowed:
+        raise HTTPException(status_code=400, detail=verdict.reason)
     record = owned_record(db, practice_id, user)
     if record.is_legacy or record.flow_version != FLOW_VERSION:
         raise HTTPException(status_code=409, detail="旧版谈话仅供查看，请重新开始新版练习")

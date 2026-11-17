@@ -14,6 +14,21 @@ export default defineConfig(() => {
   return {
     plugins: [rpxPlugin(), uni()],
     resolve: { alias: aliases },
+    build: {
+      rollupOptions: {
+        output: {
+          // Keep the framework runtime in a stable vendor chunk so it stays
+          // cacheable across releases instead of being inlined into the entry
+          // chunk. Page chunks remain lazy-loaded route chunks.
+          manualChunks(id: string) {
+            if (!id.includes('node_modules')) return
+            if (/[\\/]node_modules[\\/](?:vue|vue-router|pinia|@vue)[\\/]/.test(id)) {
+              return 'vendor-vue'
+            }
+          }
+        }
+      }
+    },
     server: {
       host: '0.0.0.0',
       port: 5667,

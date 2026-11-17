@@ -31,6 +31,14 @@ class Settings(BaseSettings):
     KNOWLEDGE_RETRIEVAL_TIMEOUT_SECONDS: float = 12.0
     KNOWLEDGE_KEYWORD_FALLBACK_TIMEOUT_SECONDS: float = 5.0
     KNOWLEDGE_LLM_TIMEOUT_SECONDS: float = 45.0
+    # 知识问答的自主检索 Agent：模型自行决定工具调用，失败时整条链路回退到固定检索
+    KNOWLEDGE_AGENT_ENABLED: bool = True
+    KNOWLEDGE_AGENT_TIMEOUT_SECONDS: float = 40.0
+    # Text-to-speech. Edge neural voices need no API key; audio is cached by
+    # sha256(text + voice) so repeated narration requests avoid the upstream.
+    TTS_STORAGE_DIR: str = "storage/tts"
+    TTS_MAX_CHARS: int = 500
+    TTS_DEFAULT_VOICE: str = "zh-CN-XiaoxiaoNeural"
     # Debate turns can contain a long transcript. Bound the prompt independently
     # from the stored session and allow slightly more time to generate a reply.
     DEBATE_LLM_TIMEOUT_SECONDS: float = 60.0

@@ -12,6 +12,7 @@ from sqlalchemy import text
 from app.config import settings
 from app.database import SessionLocal, init_db
 from app.routers import (
+    ai_ops_router,
     auth_router,
     community_router,
     debates_router,
@@ -20,6 +21,7 @@ from app.routers import (
     interviews_router,
     knowledge_router,
     tours_router,
+    tts_router,
     users_router,
 )
 from app.seed import seed_data
@@ -76,6 +78,8 @@ app.include_router(debates_router)
 app.include_router(knowledge_router)
 app.include_router(community_router)
 app.include_router(immersive_router)
+app.include_router(tts_router)
+app.include_router(ai_ops_router)
 
 @app.get("/")
 def root():

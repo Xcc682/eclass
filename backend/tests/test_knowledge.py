@@ -1,7 +1,9 @@
+# ruff: noqa: E402
+# 说明：必须先调用 configure_test_environment()，再导入读取环境变量的 app 模块。
+import asyncio
 import tempfile
 import unittest
 import uuid
-import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -14,8 +16,15 @@ from sqlalchemy import bindparam, delete, select, text
 
 from app.database import SessionLocal
 from app.main import app
+from app.models.knowledge import (
+    KnowledgeChunk,
+    KnowledgeDocument,
+    KnowledgeFavorite,
+    KnowledgeIngestionJob,
+    KnowledgeMessage,
+    KnowledgeView,
+)
 from app.models.user import User
-from app.models.knowledge import KnowledgeChunk, KnowledgeDocument, KnowledgeFavorite, KnowledgeIngestionJob, KnowledgeMessage, KnowledgeView
 from app.routers.knowledge import _normalize_answer
 from app.services.ai_service import AIResponseValidationError, AIService
 from app.services.knowledge_service import _vector_engine, chunk_text, parse_document
@@ -131,9 +140,11 @@ class KnowledgeUnitTests(unittest.TestCase):
             selected = asyncio.run(service.select_knowledge_tool("你是谁"))
         self.assertEqual(selected["arguments"], {"topic": "identity"})
 
-        with patch.object(service, "_call_tool_api", new=AsyncMock(return_value={"content": "我是助手"})):
-            with self.assertRaises(AIResponseValidationError):
-                asyncio.run(service.select_knowledge_tool("你是谁"))
+        with (
+            patch.object(service, "_call_tool_api", new=AsyncMock(return_value={"content": "我是助手"})),
+            self.assertRaises(AIResponseValidationError),
+        ):
+            asyncio.run(service.select_knowledge_tool("你是谁"))
 
 
 class KnowledgeApiTests(unittest.TestCase):
@@ -452,7 +463,7 @@ class KnowledgeApiTests(unittest.TestCase):
             "chunk_index": 0,
             "content": "用于验证向量检索超时后仍可使用关键词检索回答。",
         }]
-        retrieve_mock = AsyncMock(side_effect=[asyncio.TimeoutError(), fallback_context])
+        retrieve_mock = AsyncMock(side_effect=[TimeoutError(), fallback_context])
         with patch("app.routers.knowledge.retrieve_async", new=retrieve_mock), patch(
             "app.routers.knowledge.ai_service.knowledge_answer", new=AsyncMock(return_value="已使用降级检索回答。[1]")
         ) as answer_mock:

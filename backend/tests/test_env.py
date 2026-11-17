@@ -20,5 +20,8 @@ def configure_test_environment() -> None:
     # Vector integration has its own opt-in test. Unit/API tests must never
     # depend on, or mutate, the developer's Docker database.
     os.environ["VECTOR_DATABASE_URL"] = ""
+    # 自主检索 Agent 会真实调用模型；API 层测试聚焦固定检索链路，Agent 由
+    # test_knowledge_agent.py 用假模型单独覆盖。
+    os.environ["KNOWLEDGE_AGENT_ENABLED"] = "false"
     os.environ["COMMUNITY_STORAGE_DIR"] = community_storage.as_posix()
     os.environ.setdefault("JWT_SECRET_KEY", "test-only-secret-key-with-at-least-32-characters")

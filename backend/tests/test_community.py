@@ -1,6 +1,8 @@
+# ruff: noqa: E402
+# 说明：必须先调用 configure_test_environment()，再导入读取环境变量的 app 模块。
+import shutil
 import unittest
 import uuid
-import shutil
 from pathlib import Path
 
 from test_env import configure_test_environment
@@ -97,7 +99,7 @@ class CommunityCollaborationTests(unittest.TestCase):
         _, user = self.login()
         invalid = self.client.post("/api/v1/community/attachments/upload", headers=user, data={"purpose": "post_image"}, files={"file": ("fake.png", b"not-an-image", "image/png")})
         self.assertEqual(invalid.status_code, 415)
-        uploaded = self.client.post("/api/v1/community/attachments/upload", headers=user, data={"purpose": "task"}, files={"file": ("notes.txt", "学习资料".encode("utf-8"), "text/plain")})
+        uploaded = self.client.post("/api/v1/community/attachments/upload", headers=user, data={"purpose": "task"}, files={"file": ("notes.txt", "学习资料".encode(), "text/plain")})
         self.assertEqual(uploaded.status_code, 201)
         attachment_id = uploaded.json()["data"]["id"]
         self.assertEqual(self.client.get(f"/api/v1/community/attachments/{attachment_id}").status_code, 401)

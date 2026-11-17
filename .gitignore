@@ -25,6 +25,7 @@ backend/storage/knowledge/*
 !backend/storage/knowledge/.gitkeep
 backend/storage/immersive/*
 !backend/storage/immersive/.gitkeep
+backend/storage/tts/*
 backend/backups/
 backend/test*.db
 backend/migration-smoke*.db
