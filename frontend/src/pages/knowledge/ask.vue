@@ -130,66 +130,401 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
-import { onHide, onLoad, onUnload } from '@dcloudio/uni-app'
-import { knowledgeApi, type Citation, type KnowledgeMessage, type KnowledgeSession } from '@/api/knowledge'
+import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { onHide, onLoad, onUnload } from "@dcloudio/uni-app";
+import {
+  knowledgeApi,
+  type Citation,
+  type KnowledgeMessage,
+  type KnowledgeSession,
+} from "@/api/knowledge";
 
-type ViewMessage = KnowledgeMessage & { degraded?: boolean }
-const route=useRoute(),router=useRouter()
-const sessions=ref<KnowledgeSession[]>([]),messages=ref<ViewMessage[]>([]),question=ref(''),sessionId=ref<string>()
-const asking=ref(false),sessionsLoading=ref(false),sessionLoading=ref(false),sessionsError=ref(''),sessionError=ref('')
-const sessionSearch=ref(''),drawerOpen=ref(false),evidenceOpen=ref<Record<string,boolean>>({})
-const scopeMode=ref<'all'|'category'|'document'>('all'),category=ref('党史'),documentId=ref(''),documentTitle=ref('')
-const libraryCount=ref(0),messagesEl=ref<HTMLElement>(),inputEl=ref<any>()
-const categories=['党史','党章党规','时政','思政课程','重要讲话']
-let alive=true,requestToken=0,searchTimer:any,initialSessionId='',initialMessageId=''
+type ViewMessage = KnowledgeMessage & { degraded?: boolean };
+const route = useRoute(),
+  router = useRouter();
+const sessions = ref<KnowledgeSession[]>([]),
+  messages = ref<ViewMessage[]>([]),
+  question = ref(""),
+  sessionId = ref<string>();
+const asking = ref(false),
+  sessionsLoading = ref(false),
+  sessionLoading = ref(false),
+  sessionsError = ref(""),
+  sessionError = ref("");
+const sessionSearch = ref(""),
+  drawerOpen = ref(false),
+  evidenceOpen = ref<Record<string, boolean>>({});
+const scopeMode = ref<"all" | "category" | "document">("all"),
+  category = ref("党史"),
+  documentId = ref(""),
+  documentTitle = ref("");
+const libraryCount = ref(0),
+  messagesEl = ref<HTMLElement>(),
+  inputEl = ref<any>();
+const categories = ["党史", "党章党规", "时政", "思政课程", "重要讲话"];
+let alive = true,
+  requestToken = 0,
+  searchTimer: any,
+  initialSessionId = "",
+  initialMessageId = "";
 
-function uid(){return `qa-${Date.now().toString(36)}-${Math.random().toString(36).slice(2,10)}`}
-function isCurrent(token:number){return alive&&token===requestToken}
-function queryText(value:unknown){return Array.isArray(value)?String(value[0]||''):String(value||'')}
-function askQuery(messageId=''){
-  const query:Record<string,string>={}
-  if(sessionId.value)query.sessionId=sessionId.value
-  if(messageId)query.messageId=messageId
-  if(scopeMode.value!=='all')query.scope=scopeMode.value
-  if(scopeMode.value==='category')query.category=category.value
-  if(documentId.value){query.documentId=documentId.value;if(documentTitle.value)query.documentTitle=documentTitle.value}
-  return query
+function uid() {
+  return `qa-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
-async function syncRoute(messageId=''){await router.replace({path:'/pages/knowledge/ask',query:askQuery(messageId)})}
-function dateLabel(value:string){const d=new Date(value),now=new Date(),days=Math.floor((new Date(now.getFullYear(),now.getMonth(),now.getDate()).getTime()-new Date(d.getFullYear(),d.getMonth(),d.getDate()).getTime())/86400000);return days===0?'今天':days===1?'昨天':days<7?'近 7 天':'更早'}
-const sessionGroups=computed(()=>{const order=['今天','昨天','近 7 天','更早'];return order.map(label=>({label,items:sessions.value.filter(item=>dateLabel(item.updated_at)===label)})).filter(group=>group.items.length)})
-function debouncedRefresh(){clearTimeout(searchTimer);searchTimer=setTimeout(refreshSessions,260)}
-async function refreshSessions(){sessionsLoading.value=true;sessionsError.value='';try{sessions.value=await knowledgeApi.sessions(sessionSearch.value)}catch(e:any){sessionsError.value=e.message||'问答历史暂时加载失败'}finally{sessionsLoading.value=false}}
-function newChat(){requestToken++;asking.value=false;sessionId.value=undefined;messages.value=[];sessionError.value='';evidenceOpen.value={};void syncRoute();scrollBottom()}
-function showConfirm(title:string,content:string,options:any={}){return new Promise<any>(resolve=>uni.showModal({title,content,...options,success:resolve,fail:()=>resolve({confirm:false})}))}
-function chooseSessionAction(){return new Promise<number>(resolve=>uni.showActionSheet({itemList:['修改标题','删除会话'],success:result=>resolve(result.tapIndex),fail:()=>resolve(-1)}))}
-async function sessionActions(item:KnowledgeSession){const action=await chooseSessionAction();if(action===0){const edit=await showConfirm('修改标题',item.title,{editable:true,placeholderText:'输入新标题'});const title=(edit.content||'').trim();if(edit.confirm&&title){try{await knowledgeApi.updateSession(item.id,title);item.title=title}catch(e:any){uni.showToast({title:e.message||'修改失败',icon:'none'})}}}else if(action===1){const del=await showConfirm('删除会话','删除后不可恢复，确定继续吗？',{confirmText:'删除',confirmColor:'#8d211b'});if(del.confirm)await deleteSession(item)}}
-async function deleteSession(item:KnowledgeSession){try{await knowledgeApi.deleteSession(item.id);sessions.value=sessions.value.filter(x=>x.id!==item.id);if(sessionId.value===item.id)newChat();uni.showToast({title:'已删除',icon:'success'})}catch(e:any){uni.showToast({title:e.message||'删除失败',icon:'none'})}}
-async function openSession(id:string,messageId=''){requestToken++;asking.value=false;sessionLoading.value=true;sessionError.value='';try{const data=await knowledgeApi.session(id);if(!alive)return;sessionId.value=id;messages.value=(data.messages||[]) as ViewMessage[];if(messageId)evidenceOpen.value={...evidenceOpen.value,[messageId]:true};await syncRoute(messageId);await scrollToMessage(messageId)}catch(e:any){const missing=/会话不存在|404/.test(e.message||'');if(missing){sessionId.value=undefined;messages.value=[];sessionError.value='原问答会话已不存在，你可以开始新的问答。';await syncRoute()}else sessionError.value=e.message||'历史问答暂时无法打开'}finally{sessionLoading.value=false}}
-function setScope(value:'all'|'category'|'document'){scopeMode.value=value;void syncRoute()}
-function scopeOptions(submission_id:string){return{session_id:sessionId.value,submission_id,category:scopeMode.value==='category'?category.value:undefined,document_ids:scopeMode.value==='document'&&documentId.value?[documentId.value]:undefined}}
-async function send(preset?:string,existing?:ViewMessage){const value=(preset??existing?.content??question.value).trim();if(!value||asking.value||sessionLoading.value)return;const submissionId=existing?.submission_id||uid(),token=++requestToken;let userMessage=existing;if(!userMessage){userMessage={id:`local-${submissionId}`,role:'user',content:value,citations:[],created_at:new Date().toISOString(),submission_id:submissionId,status:'pending'};messages.value.push(userMessage);question.value=''}else{userMessage.status='pending';userMessage.error=''}asking.value=true;sessionError.value='';await scrollBottom();try{const result=await knowledgeApi.ask(value,scopeOptions(submissionId));if(!isCurrent(token))return;sessionId.value=result.session_id;userMessage.status='sent';messages.value.push({id:result.message_id,role:'assistant',content:result.answer,citations:result.citations,answer_blocks:result.answer_blocks,follow_up_suggestions:result.follow_up_suggestions,response_kind:result.response_kind,selected_tool:result.selected_tool,submission_id:result.submission_id,status:'sent',created_at:new Date().toISOString(),degraded:result.degraded});await syncRoute(result.message_id);refreshSessions();await scrollBottom()}catch(e:any){if(!isCurrent(token))return;userMessage.status='failed';userMessage.error=e.message||'发送失败，请稍后重试'}finally{if(isCurrent(token))asking.value=false}}
-function retryMessage(message:ViewMessage){send(undefined,message)}
-function leavePending(){requestToken++;asking.value=false;uni.showToast({title:'回答完成后可在历史中查看',icon:'none'});refreshSessions()}
-function sortedBlockCitations(values:number[]=[]){return [...new Set(values.filter(value=>Number.isInteger(value)&&value>0))].sort((a,b)=>a-b)}
-function groupedCitations(message:ViewMessage){const groups:any[]=[];for(const item of [...(message.citations||[])].sort((a,b)=>a.index-b.index)){let group=groups.find(x=>x.document_id===item.document_id);if(!group){group={document_id:item.document_id,document_title:item.document_title,source:item.source,items:[]};groups.push(group)}if(!group.items.some((entry:Citation)=>entry.index===item.index))group.items.push(item)}return groups}
-function toggleEvidence(id:string){evidenceOpen.value={...evidenceOpen.value,[id]:!evidenceOpen.value[id]}}
-async function openCitation(message:ViewMessage,citation:Citation){await syncRoute(message.id);uni.navigateTo({url:`/pages/knowledge/document?id=${citation.document_id}&chunk=${citation.chunk_index}&from=ask&sessionId=${encodeURIComponent(sessionId.value||'')}&messageId=${encodeURIComponent(message.id)}`})}
-function openCitationByIndex(message:ViewMessage,index:number){const citation=message.citations?.find(item=>item.index===index);if(citation)void openCitation(message,citation)}
-function copyAnswer(message:ViewMessage){(uni as any).setClipboardData({data:message.content,success:()=>uni.showToast({title:'回答已复制',icon:'success'})})}
-async function rateAnswer(message:ViewMessage,helpful:boolean){if(!message.id||message.id.startsWith('local-'))return;try{const data=await knowledgeApi.feedback(message.id,helpful);message.feedback=data.feedback;uni.showToast({title:'感谢反馈',icon:'none'})}catch(e:any){uni.showToast({title:e.message||'反馈失败',icon:'none'})}}
-function focusInput(){inputEl.value?.focus?.()}
-function goLibrary(){uni.navigateTo({url:'/pages/knowledge/knowledge'})}
-async function scrollBottom(){await nextTick();const el=messagesEl.value;if(el)el.scrollTop=el.scrollHeight}
-async function scrollToMessage(messageId=''){await nextTick();const el=messagesEl.value;if(!el)return;if(!messageId){el.scrollTop=el.scrollHeight;return}const target=document.getElementById(`message-${messageId}`);if(target&&el.contains(target))el.scrollTop=Math.max(0,target.offsetTop-24);else el.scrollTop=el.scrollHeight}
+function isCurrent(token: number) {
+  return alive && token === requestToken;
+}
+function queryText(value: unknown) {
+  return Array.isArray(value) ? String(value[0] || "") : String(value || "");
+}
+function askQuery(messageId = "") {
+  const query: Record<string, string> = {};
+  if (sessionId.value) query.sessionId = sessionId.value;
+  if (messageId) query.messageId = messageId;
+  if (scopeMode.value !== "all") query.scope = scopeMode.value;
+  if (scopeMode.value === "category") query.category = category.value;
+  if (documentId.value) {
+    query.documentId = documentId.value;
+    if (documentTitle.value) query.documentTitle = documentTitle.value;
+  }
+  return query;
+}
+async function syncRoute(messageId = "") {
+  await router.replace({
+    path: "/pages/knowledge/ask",
+    query: askQuery(messageId),
+  });
+}
+function dateLabel(value: string) {
+  const d = new Date(value),
+    now = new Date(),
+    days = Math.floor(
+      (new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime() -
+        new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()) /
+        86400000,
+    );
+  return days === 0
+    ? "今天"
+    : days === 1
+      ? "昨天"
+      : days < 7
+        ? "近 7 天"
+        : "更早";
+}
+const sessionGroups = computed(() => {
+  const order = ["今天", "昨天", "近 7 天", "更早"];
+  return order
+    .map((label) => ({
+      label,
+      items: sessions.value.filter(
+        (item) => dateLabel(item.updated_at) === label,
+      ),
+    }))
+    .filter((group) => group.items.length);
+});
+function debouncedRefresh() {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(refreshSessions, 260);
+}
+async function refreshSessions() {
+  sessionsLoading.value = true;
+  sessionsError.value = "";
+  try {
+    sessions.value = await knowledgeApi.sessions(sessionSearch.value);
+  } catch (e: any) {
+    sessionsError.value = e.message || "问答历史暂时加载失败";
+  } finally {
+    sessionsLoading.value = false;
+  }
+}
+function newChat() {
+  requestToken++;
+  asking.value = false;
+  sessionId.value = undefined;
+  messages.value = [];
+  sessionError.value = "";
+  evidenceOpen.value = {};
+  void syncRoute();
+  scrollBottom();
+}
+function showConfirm(title: string, content: string, options: any = {}) {
+  return new Promise<any>((resolve) =>
+    uni.showModal({
+      title,
+      content,
+      ...options,
+      success: resolve,
+      fail: () => resolve({ confirm: false }),
+    }),
+  );
+}
+function chooseSessionAction() {
+  return new Promise<number>((resolve) =>
+    uni.showActionSheet({
+      itemList: ["修改标题", "删除会话"],
+      success: (result) => resolve(result.tapIndex),
+      fail: () => resolve(-1),
+    }),
+  );
+}
+async function sessionActions(item: KnowledgeSession) {
+  const action = await chooseSessionAction();
+  if (action === 0) {
+    const edit = await showConfirm("修改标题", item.title, {
+      editable: true,
+      placeholderText: "输入新标题",
+    });
+    const title = (edit.content || "").trim();
+    if (edit.confirm && title) {
+      try {
+        await knowledgeApi.updateSession(item.id, title);
+        item.title = title;
+      } catch (e: any) {
+        uni.showToast({ title: e.message || "修改失败", icon: "none" });
+      }
+    }
+  } else if (action === 1) {
+    const del = await showConfirm("删除会话", "删除后不可恢复，确定继续吗？", {
+      confirmText: "删除",
+      confirmColor: "#8d211b",
+    });
+    if (del.confirm) await deleteSession(item);
+  }
+}
+async function deleteSession(item: KnowledgeSession) {
+  try {
+    await knowledgeApi.deleteSession(item.id);
+    sessions.value = sessions.value.filter((x) => x.id !== item.id);
+    if (sessionId.value === item.id) newChat();
+    uni.showToast({ title: "已删除", icon: "success" });
+  } catch (e: any) {
+    uni.showToast({ title: e.message || "删除失败", icon: "none" });
+  }
+}
+async function openSession(id: string, messageId = "") {
+  requestToken++;
+  asking.value = false;
+  sessionLoading.value = true;
+  sessionError.value = "";
+  try {
+    const data = await knowledgeApi.session(id);
+    if (!alive) return;
+    sessionId.value = id;
+    messages.value = (data.messages || []) as ViewMessage[];
+    if (messageId)
+      evidenceOpen.value = { ...evidenceOpen.value, [messageId]: true };
+    await syncRoute(messageId);
+    await scrollToMessage(messageId);
+  } catch (e: any) {
+    const missing = /会话不存在|404/.test(e.message || "");
+    if (missing) {
+      sessionId.value = undefined;
+      messages.value = [];
+      sessionError.value = "原问答会话已不存在，你可以开始新的问答。";
+      await syncRoute();
+    } else sessionError.value = e.message || "历史问答暂时无法打开";
+  } finally {
+    sessionLoading.value = false;
+  }
+}
+function setScope(value: "all" | "category" | "document") {
+  scopeMode.value = value;
+  void syncRoute();
+}
+function scopeOptions(submission_id: string) {
+  return {
+    session_id: sessionId.value,
+    submission_id,
+    category: scopeMode.value === "category" ? category.value : undefined,
+    document_ids:
+      scopeMode.value === "document" && documentId.value
+        ? [documentId.value]
+        : undefined,
+  };
+}
+async function send(preset?: string, existing?: ViewMessage) {
+  const value = (preset ?? existing?.content ?? question.value).trim();
+  if (!value || asking.value || sessionLoading.value) return;
+  const submissionId = existing?.submission_id || uid(),
+    token = ++requestToken;
+  let userMessage = existing;
+  if (!userMessage) {
+    userMessage = {
+      id: `local-${submissionId}`,
+      role: "user",
+      content: value,
+      citations: [],
+      created_at: new Date().toISOString(),
+      submission_id: submissionId,
+      status: "pending",
+    };
+    messages.value.push(userMessage);
+    question.value = "";
+  } else {
+    userMessage.status = "pending";
+    userMessage.error = "";
+  }
+  asking.value = true;
+  sessionError.value = "";
+  await scrollBottom();
+  try {
+    const result = await knowledgeApi.ask(value, scopeOptions(submissionId));
+    if (!isCurrent(token)) return;
+    sessionId.value = result.session_id;
+    userMessage.status = "sent";
+    messages.value.push({
+      id: result.message_id,
+      role: "assistant",
+      content: result.answer,
+      citations: result.citations,
+      answer_blocks: result.answer_blocks,
+      follow_up_suggestions: result.follow_up_suggestions,
+      response_kind: result.response_kind,
+      selected_tool: result.selected_tool,
+      submission_id: result.submission_id,
+      status: "sent",
+      created_at: new Date().toISOString(),
+      degraded: result.degraded,
+    });
+    await syncRoute(result.message_id);
+    refreshSessions();
+    await scrollBottom();
+  } catch (e: any) {
+    if (!isCurrent(token)) return;
+    userMessage.status = "failed";
+    userMessage.error = e.message || "发送失败，请稍后重试";
+  } finally {
+    if (isCurrent(token)) asking.value = false;
+  }
+}
+function retryMessage(message: ViewMessage) {
+  send(undefined, message);
+}
+function leavePending() {
+  requestToken++;
+  asking.value = false;
+  uni.showToast({ title: "回答完成后可在历史中查看", icon: "none" });
+  refreshSessions();
+}
+function sortedBlockCitations(values: number[] = []) {
+  return [
+    ...new Set(values.filter((value) => Number.isInteger(value) && value > 0)),
+  ].sort((a, b) => a - b);
+}
+function groupedCitations(message: ViewMessage) {
+  const groups: any[] = [];
+  for (const item of [...(message.citations || [])].sort(
+    (a, b) => a.index - b.index,
+  )) {
+    let group = groups.find((x) => x.document_id === item.document_id);
+    if (!group) {
+      group = {
+        document_id: item.document_id,
+        document_title: item.document_title,
+        source: item.source,
+        items: [],
+      };
+      groups.push(group);
+    }
+    if (!group.items.some((entry: Citation) => entry.index === item.index))
+      group.items.push(item);
+  }
+  return groups;
+}
+function toggleEvidence(id: string) {
+  evidenceOpen.value = { ...evidenceOpen.value, [id]: !evidenceOpen.value[id] };
+}
+async function openCitation(message: ViewMessage, citation: Citation) {
+  await syncRoute(message.id);
+  uni.navigateTo({
+    url: `/pages/knowledge/document?id=${citation.document_id}&chunk=${citation.chunk_index}&from=ask&sessionId=${encodeURIComponent(sessionId.value || "")}&messageId=${encodeURIComponent(message.id)}`,
+  });
+}
+function openCitationByIndex(message: ViewMessage, index: number) {
+  const citation = message.citations?.find((item) => item.index === index);
+  if (citation) void openCitation(message, citation);
+}
+function copyAnswer(message: ViewMessage) {
+  (uni as any).setClipboardData({
+    data: message.content,
+    success: () => uni.showToast({ title: "回答已复制", icon: "success" }),
+  });
+}
+async function rateAnswer(message: ViewMessage, helpful: boolean) {
+  if (!message.id || message.id.startsWith("local-")) return;
+  try {
+    const data = await knowledgeApi.feedback(message.id, helpful);
+    message.feedback = data.feedback;
+    uni.showToast({ title: "感谢反馈", icon: "none" });
+  } catch (e: any) {
+    uni.showToast({ title: e.message || "反馈失败", icon: "none" });
+  }
+}
+function focusInput() {
+  inputEl.value?.focus?.();
+}
+function goLibrary() {
+  uni.navigateTo({ url: "/pages/knowledge/knowledge" });
+}
+async function scrollBottom() {
+  await nextTick();
+  const el = messagesEl.value;
+  if (el) el.scrollTop = el.scrollHeight;
+}
+async function scrollToMessage(messageId = "") {
+  await nextTick();
+  const el = messagesEl.value;
+  if (!el) return;
+  if (!messageId) {
+    el.scrollTop = el.scrollHeight;
+    return;
+  }
+  const target = document.getElementById(`message-${messageId}`);
+  if (target && el.contains(target))
+    el.scrollTop = Math.max(0, target.offsetTop - 24);
+  else el.scrollTop = el.scrollHeight;
+}
 
-onLoad((query:any)=>{initialSessionId=queryText(query?.sessionId);initialMessageId=queryText(query?.messageId);const scope=queryText(query?.scope);if(scope==='category'||scope==='document')scopeMode.value=scope;if(query?.category)category.value=queryText(query.category);if(query?.documentId){documentId.value=queryText(query.documentId);documentTitle.value=queryText(query.documentTitle);if(!scope)scopeMode.value='document'}})
-onMounted(async()=>{if(!initialSessionId)initialSessionId=queryText(route.query.sessionId);if(!initialMessageId)initialMessageId=queryText(route.query.messageId);await Promise.all([refreshSessions(),knowledgeApi.status().then(data=>{libraryCount.value=data.published_documents}).catch(()=>{})]);if(initialSessionId)await openSession(initialSessionId,initialMessageId)})
-onHide(()=>{requestToken++;asking.value=false})
-onUnload(()=>{alive=false;requestToken++})
-onUnmounted(()=>{alive=false;clearTimeout(searchTimer);requestToken++})
+onLoad((query: any) => {
+  initialSessionId = queryText(query?.sessionId);
+  initialMessageId = queryText(query?.messageId);
+  const scope = queryText(query?.scope);
+  if (scope === "category" || scope === "document") scopeMode.value = scope;
+  if (query?.category) category.value = queryText(query.category);
+  if (query?.documentId) {
+    documentId.value = queryText(query.documentId);
+    documentTitle.value = queryText(query.documentTitle);
+    if (!scope) scopeMode.value = "document";
+  }
+});
+onMounted(async () => {
+  if (!initialSessionId) initialSessionId = queryText(route.query.sessionId);
+  if (!initialMessageId) initialMessageId = queryText(route.query.messageId);
+  await Promise.all([
+    refreshSessions(),
+    knowledgeApi
+      .status()
+      .then((data) => {
+        libraryCount.value = data.published_documents;
+      })
+      .catch(() => {}),
+  ]);
+  if (initialSessionId) await openSession(initialSessionId, initialMessageId);
+});
+onHide(() => {
+  requestToken++;
+  asking.value = false;
+});
+onUnload(() => {
+  alive = false;
+  requestToken++;
+});
+onUnmounted(() => {
+  alive = false;
+  clearTimeout(searchTimer);
+  requestToken++;
+});
 </script>
 
 <style scoped>
