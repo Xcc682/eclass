@@ -8,6 +8,19 @@ __pycache__/
 .idea/
 .vscode/
 *.local.json
+
+# 打包产物：构建压缩包体积大且可能含密钥/数据库，不纳入版本库。
+*.zip
+# 参赛打包包体接近 100 MB，只保留在本地，交付物本身（docx/pdf）照常入库。
+/output/*.zip
+/output/_ppt_media/
+/backend/tmp_migration_test.db
+
+# 工具生成的临时文件
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
 backend/storage/knowledge/*
 !backend/storage/knowledge/.gitkeep
 backend/storage/immersive/*
