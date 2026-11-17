@@ -1,8 +1,8 @@
 """Knowledge library, RAG question answering and content administration APIs."""
 from __future__ import annotations
 
-import json
 import asyncio
+import json
 import logging
 import re
 import time
@@ -35,13 +35,13 @@ from app.services.ai_service import ai_service
 from app.services.knowledge_service import (
     ALLOWED_MIME_TYPES,
     SUPPORTED_EXTENSIONS,
+    _ensure_fts,
     process_document,
     purge_document_indexes,
     retrieval_status,
     retrieve,
     retrieve_async,
     sha256_bytes,
-    _ensure_fts,
 )
 
 router = APIRouter(prefix="/api/v1/knowledge", tags=["知识库"])
@@ -823,7 +823,6 @@ async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user)
         KnowledgeMessage.submission_id == submission_id,
     ))
     if existing_answer and existing_answer.status == "sent":
-        answer_data = _safe_json(existing_answer.answer_json, {})
         payload = _message_payload(existing_answer)
         return {"code": 0, "data": {
             "answer": payload["content"], "session_id": session.id, "message_id": existing_answer.id,
@@ -912,7 +911,7 @@ async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user)
                 retrieve_async(retrieval_query, data.category, limit=6, use_vector=True, document_ids=document_ids),
                 timeout=settings.KNOWLEDGE_RETRIEVAL_TIMEOUT_SECONDS,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             logger.warning("[knowledge] vector_retrieval_timeout request_id=%s fallback=keyword_only", submission_id)
             degraded = True
             try:
@@ -966,7 +965,7 @@ async def ask_knowledge(data: AskRequest, user: User = Depends(get_current_user)
                 )
                 normalized = _normalize_answer(raw_answer, citations, data.question, contexts)
                 logger.info("[knowledge] llm_answer_done request_id=%s citations=%s", submission_id, len(normalized["citations"]))
-            except asyncio.TimeoutError as exc:
+            except TimeoutError as exc:
                 logger.warning("[knowledge] llm_answer_timeout request_id=%s", submission_id)
                 user_message = db.get(KnowledgeMessage, user_message.id)
                 user_message.status, user_message.error = "failed", "AI 回答超时，资料依据已检索完成"

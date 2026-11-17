@@ -1,5 +1,5 @@
+"""应用配置：所有可调参数集中在此，通过 .env 或环境变量覆盖。"""
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from typing import Optional
 
 
 class Settings(BaseSettings):
@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "sqlite:///./dev.db"
     DATABASE_URL_SYNC: str = "sqlite:///./dev.db"
-    VECTOR_DATABASE_URL: Optional[str] = None
+    VECTOR_DATABASE_URL: str | None = None
 
     # Redis
     REDIS_URL: str = "redis://127.0.0.1:6379/0"
@@ -22,7 +22,7 @@ class Settings(BaseSettings):
     JWT_EXPIRE_MINUTES: int = 1440
 
     # LLM
-    LLM_API_KEY: Optional[str] = None
+    LLM_API_KEY: str | None = None
     LLM_API_BASE: str = "https://api.deepseek.com"
     LLM_MODEL: str = "deepseek-v4-flash"
     EMBEDDING_MODEL: str = "BAAI/bge-small-zh-v1.5"
@@ -31,6 +31,15 @@ class Settings(BaseSettings):
     KNOWLEDGE_RETRIEVAL_TIMEOUT_SECONDS: float = 12.0
     KNOWLEDGE_KEYWORD_FALLBACK_TIMEOUT_SECONDS: float = 5.0
     KNOWLEDGE_LLM_TIMEOUT_SECONDS: float = 45.0
+    # Debate turns can contain a long transcript. Bound the prompt independently
+    # from the stored session and allow slightly more time to generate a reply.
+    DEBATE_LLM_TIMEOUT_SECONDS: float = 60.0
+    DEBATE_HISTORY_MAX_CHARS: int = 12000
+    DEBATE_HISTORY_MESSAGE_MAX_CHARS: int = 1400
+    DEBATE_ARGUMENT_MAX_CHARS: int = 6000
+    DEBATE_EVIDENCE_MAX_ITEMS: int = 4
+    DEBATE_EVIDENCE_ITEM_MAX_CHARS: int = 600
+    DEBATE_REPORT_HISTORY_MAX_CHARS: int = 24000
 
     # Knowledge base
     KNOWLEDGE_STORAGE_DIR: str = "storage/knowledge"
@@ -44,9 +53,9 @@ class Settings(BaseSettings):
     # same S3-compatible settings at MinIO, OSS or COS.
     IMMERSIVE_MEDIA_DIR: str = "storage/immersive"
     MEDIA_BASE_URL: str = ""
-    S3_ENDPOINT: Optional[str] = None
-    S3_ACCESS_KEY: Optional[str] = None
-    S3_SECRET_KEY: Optional[str] = None
+    S3_ENDPOINT: str | None = None
+    S3_ACCESS_KEY: str | None = None
+    S3_SECRET_KEY: str | None = None
     S3_BUCKET: str = "immersive-media"
     S3_REGION: str = "us-east-1"
 
@@ -55,9 +64,9 @@ class Settings(BaseSettings):
     DEV_SMS_CODE: str = "123456"
 
     # Yiban
-    YIBAN_APP_ID: Optional[str] = None
-    YIBAN_APP_SECRET: Optional[str] = None
-    YIBAN_REDIRECT_URI: Optional[str] = None
+    YIBAN_APP_ID: str | None = None
+    YIBAN_APP_SECRET: str | None = None
+    YIBAN_REDIRECT_URI: str | None = None
 
     # Server
     HOST: str = "0.0.0.0"

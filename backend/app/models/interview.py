@@ -1,7 +1,11 @@
+"""入党谈话模型：谈话场景、练习记录与逐轮对话消息。"""
 import uuid
 from datetime import datetime
-from sqlalchemy import Boolean, Column, String, Integer, DateTime, Text, ForeignKey, Index, UniqueConstraint, text
+
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+
 from app.database import Base
+
 
 def gen_uuid():
     return str(uuid.uuid4())

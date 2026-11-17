@@ -1,8 +1,8 @@
+"""入党谈话路由：场景列表、练习流程、逐轮应答、提示与评估报告。"""
 import json
 import random
 import uuid
 from datetime import datetime, timedelta
-from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
@@ -77,7 +77,7 @@ def _valid_record_filter():
     )
 
 
-def scenario_payload(s: InterviewScenario, db: Optional[Session] = None, user: Optional[User] = None) -> dict:
+def scenario_payload(s: InterviewScenario, db: Session | None = None, user: User | None = None) -> dict:
     payload = {
         "id": s.id, "title": s.title, "description": s.description, "difficulty": s.difficulty,
         "estimated_duration": s.estimated_duration, "ai_role_name": s.ai_role_name, "ai_role_title": s.ai_role_title,
@@ -334,7 +334,7 @@ async def respond(practice_id: str, data: RespondRequest, user: User = Depends(g
             InterviewMessage.round_number == round_number,
         ))
         if duplicate and duplicate.submission_id != data.submission_id:
-            raise HTTPException(status_code=409, detail="本轮已有回答正在处理，请刷新会话")
+            raise HTTPException(status_code=409, detail="本轮已有回答正在处理，请刷新会话") from None
         raise
 
     record = owned_record(db, practice_id, user)

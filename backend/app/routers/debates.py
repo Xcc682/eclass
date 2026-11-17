@@ -1,4 +1,6 @@
+"""思政辩论路由：辩题生成、分阶段交锋、证据检索与裁判报告。"""
 import json
+import logging
 import uuid
 from datetime import datetime, timedelta
 
@@ -19,6 +21,7 @@ from app.services.knowledge_service import retrieve
 from app.services.point_service import award_points
 
 router = APIRouter(prefix="/api/v1/debates", tags=["思政辩论"])
+logger = logging.getLogger("app.debates")
 
 QUICK_STEPS = [
     {"key": "user_opening", "stage": "opening", "label": "立论陈词"},
@@ -363,7 +366,7 @@ async def submit_argument(session_id: str, data: ArgumentRequest, user: User = D
             DebateMessage.round_number == round_number,
         ))
         if duplicate and duplicate.submission_id != data.submission_id:
-            raise HTTPException(status_code=409, detail="本步骤已有陈词正在处理，请刷新会话")
+            raise HTTPException(status_code=409, detail="本步骤已有陈词正在处理，请刷新会话") from None
         raise
 
     record = owned(db, session_id, user)
@@ -383,6 +386,7 @@ async def submit_argument(session_id: str, data: ArgumentRequest, user: User = D
         if failed:
             failed.delivery_status = "failed"
             db.commit()
+        logger.exception("Debate AI request failed: session_id=%s step=%s", session_id, step["key"])
         raise HTTPException(status_code=503, detail=f"AI 服务暂不可用：{exc}") from exc
 
     user_message = db.get(DebateMessage, user_message.id)
@@ -454,6 +458,7 @@ async def end_debate(session_id: str, user: User = Depends(get_current_user), db
     except Exception as exc:
         db.execute(update(DebatePracticeRecord).where(DebatePracticeRecord.id == session_id).values(report_status="failed", report_started_at=None))
         db.commit()
+        logger.exception("Debate AI feedback failed: session_id=%s", session_id)
         raise HTTPException(status_code=503, detail=f"AI 服务暂不可用：{exc}") from exc
 
     feedback["overall_score"] = round(sum(feedback["dimension_scores"].values()) / len(feedback["dimension_scores"]))

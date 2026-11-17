@@ -9,7 +9,7 @@ from pathlib import Path
 from threading import Lock, Thread
 from typing import Any
 
-from sqlalchemy import bindparam, create_engine, delete, func, or_, select, text
+from sqlalchemy import bindparam, create_engine, delete, or_, select, text
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -208,7 +208,7 @@ def sync_vectors(document_id: str, chunks: list[KnowledgeChunk]) -> bool:
         vectors = _embedding_model().encode([chunk.content for chunk in chunks], normalize_embeddings=True)
         with vector_engine.begin() as connection:
             connection.execute(text("DELETE FROM knowledge_vectors WHERE document_id = :document_id"), {"document_id": document_id})
-            for chunk, vector in zip(chunks, vectors):
+            for chunk, vector in zip(chunks, vectors, strict=True):
                 connection.execute(text("""INSERT INTO knowledge_vectors(chunk_id, document_id, content, embedding)
                     VALUES (:chunk_id, :document_id, :content, CAST(:embedding AS vector))
                     ON CONFLICT (chunk_id) DO UPDATE SET content=EXCLUDED.content, embedding=EXCLUDED.embedding, updated_at=now()"""), {
@@ -218,8 +218,8 @@ def sync_vectors(document_id: str, chunks: list[KnowledgeChunk]) -> bool:
                     "embedding": "[" + ",".join(str(float(item)) for item in vector) + "]",
                 })
         return True
-    except Exception as exc:
-        print(f"[knowledge] vector indexing unavailable: {exc.__class__.__name__}: {exc}", flush=True)
+    except Exception:
+        logger.warning("[knowledge] vector indexing unavailable, falling back to keyword retrieval", exc_info=True)
         return False
 
 

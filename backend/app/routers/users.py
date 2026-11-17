@@ -1,10 +1,11 @@
+"""用户路由：个人资料、成长指数、积分明细、成就与历史报告。"""
 import json
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from typing import Literal
 from zoneinfo import ZoneInfo
 
-from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
@@ -199,7 +200,7 @@ def _weighted_evidence(signals: list[tuple[int | None, float, str]]) -> tuple[in
 
 
 def _local_date(value: datetime) -> date:
-    utc_value = value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value.astimezone(timezone.utc)
+    utc_value = value.replace(tzinfo=UTC) if value.tzinfo is None else value.astimezone(UTC)
     return utc_value.astimezone(LOCAL_TIMEZONE).date()
 
 
@@ -392,7 +393,8 @@ def get_profile(user: User = Depends(get_current_user), db: Session = Depends(ge
 def update_profile(data: ProfileUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     for key, value in data.model_dump(exclude_none=True).items():
         setattr(user, key, value)
-    payload = user_payload(user); payload["growth"] = growth_payload(db, user)
+    payload = user_payload(user)
+    payload["growth"] = growth_payload(db, user)
     payload["features"] = {
         "notifications_available": True,
         "yiban_binding_available": False,

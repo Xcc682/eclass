@@ -1,3 +1,4 @@
+"""成长社区模型：帖子、回复、点赞、收藏、通知与内容审核。"""
 import uuid
 from datetime import datetime
 

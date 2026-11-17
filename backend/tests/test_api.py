@@ -1,3 +1,5 @@
+import asyncio
+import json
 import unittest
 import uuid
 from unittest.mock import AsyncMock, patch
@@ -12,7 +14,7 @@ from app.database import SessionLocal
 from app.main import app
 from app.models.user import User
 from app.services.ai_service import (
-    AIResponseValidationError, validate_debate_feedback, validate_debate_turn,
+    AIResponseValidationError, AIService, validate_debate_feedback, validate_debate_turn,
     validate_interview_report, validate_interview_turn,
 )
 
@@ -260,6 +262,57 @@ class ApiAcceptanceTests(unittest.TestCase):
         self.assertEqual(resumed.json()["data"]["status"], "awaiting_feedback")
         called_steps = [call.kwargs["step"] for call in mock_turn.await_args_list]
         self.assertEqual(called_steps, expected_steps)
+
+    def test_11_debate_prompt_context_is_bounded_for_long_sessions(self):
+        service = AIService()
+        conversation = [
+            {"stance": "pro" if index % 2 == 0 else "con", "content": f"第{index}轮：" + "历史内容" * 700}
+            for index in range(20)
+        ]
+        response = {
+            "argument": "反方回应",
+            "coach_feedback": {"stage_fit": "符合", "strength": "清晰", "next_action": "补充例证"},
+            "argument_map": {"claims": ["主张"], "evidence": [], "reasoning": [], "gaps": []},
+        }
+        with patch.object(service, "_call_api", new=AsyncMock(return_value=json.dumps(response))) as call:
+            result = asyncio.run(service.debate_argue(
+                topic="基层选举的规范", stance="pro", argument="当前陈词" + "论述" * 4000,
+                conversation=conversation,
+                evidence=[{"document_title": "资料" + "标题" * 100, "excerpt": "引用" * 2000}] * 8,
+            ))
+        prompt = call.await_args.args[0][1]["content"]
+        self.assertIn("最近辩论交锋", prompt)
+        self.assertIn("[内容过长，以下已截断]", prompt)
+        self.assertLessEqual(len(prompt), 23000)
+        self.assertEqual(call.await_args.kwargs["timeout"], 60.0)
+        self.assertTrue(call.await_args.kwargs["disable_thinking"])
+        self.assertTrue(call.await_args.kwargs["json_mode"])
+        self.assertEqual(result["argument"], "反方回应")
+
+    def test_12_debate_accepts_plain_ai_reply_when_json_is_invalid(self):
+        service = AIService()
+        plain_reply = "对方的论据仍缺少可核验的事实支撑，应当补充具体制度依据。"
+        with patch.object(service, "_call_api", new=AsyncMock(return_value=plain_reply)):
+            result = asyncio.run(service.debate_argue(
+                topic="基层选举的规范", stance="pro", argument="我方观点", conversation=[],
+            ))
+        self.assertEqual(result["argument"], plain_reply)
+        with self.assertRaisesRegex(AIResponseValidationError, "不是有效 JSON"):
+            service._parse_json("这不是 JSON")
+
+    def test_13_debate_feedback_retries_once_after_invalid_json(self):
+        service = AIService()
+        feedback = {
+            "overall_score": 82,
+            "dimension_scores": {"逻辑严谨性": 82, "知识运用": 80, "思辨深度": 83, "语言表达": 81, "临场反应": 84},
+            "strengths": ["论点清晰"], "weaknesses": ["可补充事实"], "suggestion": "补充论据",
+        }
+        with patch.object(service, "_call_api", new=AsyncMock(side_effect=["非 JSON 内容", json.dumps(feedback)])) as call:
+            result = asyncio.run(service.debate_feedback("基层选举的规范", [], user_stance="pro"))
+        self.assertEqual(call.await_count, 2)
+        self.assertTrue(call.await_args.kwargs["disable_thinking"])
+        self.assertTrue(call.await_args.kwargs["json_mode"])
+        self.assertEqual(result["overall_score"], 82)
 
 
 if __name__ == "__main__":

@@ -1,7 +1,11 @@
+"""用户模型：手机号登录、角色权限与积分余额。"""
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, DateTime, Boolean, Text
+
+from sqlalchemy import Boolean, Column, DateTime, Integer, String
+
 from app.database import Base
+
 
 def gen_uuid():
     return str(uuid.uuid4())

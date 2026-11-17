@@ -1,5 +1,6 @@
-from collections import defaultdict, deque
+"""认证路由：手机号注册登录、JWT 签发、易班 OAuth 适配与登录限流。"""
 import time
+from collections import defaultdict, deque
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from passlib.context import CryptContext

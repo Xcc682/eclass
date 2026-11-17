@@ -1,3 +1,4 @@
+"""党史情景路由：书卷场景、分支决策、AI 史官问答与学习进度。"""
 import json
 from datetime import datetime
 
@@ -29,7 +30,8 @@ def learning_record(db: Session, user: User, scenario_id: str, create: bool = Fa
     record = db.scalar(select(HistoryLearningRecord).where(HistoryLearningRecord.user_id == user.id, HistoryLearningRecord.scenario_id == scenario_id))
     if not record and create:
         record = HistoryLearningRecord(user_id=user.id, scenario_id=scenario_id, progress=10)
-        db.add(record); db.flush()
+        db.add(record)
+        db.flush()
     return record
 
 
@@ -73,17 +75,24 @@ async def ask_question(data: AskRequest, user: User = Depends(get_current_user),
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"AI 服务暂不可用：{exc}") from exc
     record = learning_record(db, user, scenario.id, create=True)
-    history = json.loads(record.qa_json or "[]"); history.append({"q": data.question, "a": answer}); record.qa_json = json.dumps(history[-20:], ensure_ascii=False); record.progress = max(record.progress, 40)
+    history = json.loads(record.qa_json or "[]")
+    history.append({"q": data.question, "a": answer})
+    record.qa_json = json.dumps(history[-20:], ensure_ascii=False)
+    record.progress = max(record.progress, 40)
     return {"code": 0, "data": {"answer": answer}}
 
 
 @router.post("/scenarios/{scenario_id}/choice")
 def save_choice(scenario_id: str, data: ChoiceRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     scenario = db.get(HistoryScenario, scenario_id)
-    if not scenario: raise HTTPException(status_code=404, detail="场景不存在")
+    if not scenario:
+        raise HTTPException(status_code=404, detail="场景不存在")
     options = json.loads(scenario.decision_points_json or "{}").get("options", [])
-    if data.option_index >= len(options): raise HTTPException(status_code=422, detail="选项不存在")
-    record = learning_record(db, user, scenario_id, create=True); record.choice_index = data.option_index; record.progress = max(record.progress, 70)
+    if data.option_index >= len(options):
+        raise HTTPException(status_code=422, detail="选项不存在")
+    record = learning_record(db, user, scenario_id, create=True)
+    record.choice_index = data.option_index
+    record.progress = max(record.progress, 70)
     return {"code": 0, "data": {"option_index": data.option_index, "feedback": options[data.option_index].get("feedback", ""), "progress": record.progress}}
 
 

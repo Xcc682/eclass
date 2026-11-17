@@ -1,3 +1,4 @@
+"""积分服务：基于台账的幂等发放，重复调用不会重复计分。"""
 import json
 from datetime import datetime
 from typing import Any
@@ -8,7 +9,6 @@ from sqlalchemy.orm import Session
 
 from app.models.points import PointTransaction
 from app.models.user import User
-
 
 POINT_RULE_VERSION = "2026.1"
 POINT_MODULES = ("interview", "debate", "history", "tour")
@@ -86,6 +86,7 @@ def award_points(
 
 
 def point_summary(db: Session, user: User, limit: int = 20) -> dict[str, Any]:
+    """按模块汇总用户积分，并返回最近的积分流水明细。"""
     rows = db.execute(
         select(PointTransaction.module, func.coalesce(func.sum(PointTransaction.points), 0))
         .where(PointTransaction.user_id == user.id)

@@ -16,7 +16,6 @@ from app.security import get_current_user
 from app.services.ai_service import ai_service, validate_generated_text
 from app.services.point_service import award_points
 
-
 router = APIRouter(prefix="/api/v1/immersive", tags=["沉浸式历史场景书"])
 SPREAD_TYPES = {"cover", "cinematic", "exploration", "dialogue", "decision", "detour", "archive", "reflection", "ending"}
 BRANCH_FLOW_VERSION = 5

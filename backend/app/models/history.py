@@ -1,7 +1,11 @@
+"""党史情景模型：党史书卷场景与学习进度记录。"""
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, DateTime, Text, Boolean, ForeignKey
+
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Integer, String, Text
+
 from app.database import Base
+
 
 def gen_uuid():
     return str(uuid.uuid4())

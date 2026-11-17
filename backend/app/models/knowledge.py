@@ -1,3 +1,4 @@
+"""知识库模型：文档、分块、向量索引任务、问答会话与写作模板。"""
 import uuid
 from datetime import datetime
 

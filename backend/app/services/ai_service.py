@@ -1,7 +1,9 @@
 """AI Service - Real DeepSeek API integration with phase-aware prompts."""
+import contextlib
 import json
+
 import httpx
-from typing import Optional, Dict, List, AsyncIterator
+
 from app.config import settings
 
 DIMENSIONS = ["思想认识", "表达逻辑", "入党动机", "理论掌握", "应变能力"]
@@ -27,6 +29,50 @@ def _text(value, label: str, *, allow_empty: bool = False) -> str:
     if not isinstance(value, str) or (not allow_empty and not value.strip()):
         raise AIResponseValidationError(f"AI 返回的{label}无效")
     return value.strip()
+
+
+def _clip_prompt_text(value: object, limit: int) -> str:
+    """Bound user-controlled text before it is sent to the model."""
+    text = str(value or "").strip()
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}\n[内容过长，以下已截断]"
+
+
+def _recent_debate_history(
+    conversation: list[dict],
+    *,
+    total_limit: int,
+    message_limit: int,
+    label_for_turn,
+) -> str:
+    """Keep latest exchanges in chronological order within a fixed LLM budget."""
+    retained: list[str] = []
+    used = 0
+    for turn in reversed(conversation):
+        content = _clip_prompt_text(turn.get("content"), message_limit)
+        if not content:
+            continue
+        row = f"{label_for_turn(turn)}：{content}"
+        row_size = len(row) + (1 if retained else 0)
+        if retained and used + row_size > total_limit:
+            break
+        if not retained and row_size > total_limit:
+            row = _clip_prompt_text(row, total_limit)
+            row_size = len(row)
+        retained.append(row)
+        used += row_size
+    return "\n".join(reversed(retained))
+
+
+def _debate_evidence_context(evidence: list[dict] | None) -> str:
+    rows: list[str] = []
+    for item in (evidence or [])[:settings.DEBATE_EVIDENCE_MAX_ITEMS]:
+        title = _clip_prompt_text(item.get("document_title", "资料"), 120)
+        excerpt = _clip_prompt_text(item.get("excerpt"), settings.DEBATE_EVIDENCE_ITEM_MAX_CHARS)
+        if excerpt:
+            rows.append(f"[{title}] {excerpt}")
+    return "\n".join(rows)
 
 
 def _score(value, label: str) -> int:
@@ -68,10 +114,8 @@ def validate_interview_turn(value: object) -> dict:
     if isinstance(raw_scores, dict):
         for dim in DIMENSIONS:
             if dim in raw_scores:
-                try:
+                with contextlib.suppress(AIResponseValidationError):
                     res["snapshot_scores"][dim] = _score(raw_scores[dim], dim)
-                except AIResponseValidationError:
-                    pass
     raw_observations = data.get("observations", {})
     if isinstance(raw_observations, dict):
         for dim in DIMENSIONS:
@@ -278,13 +322,15 @@ class AIService:
 
     async def _call_api(
         self,
-        messages: List[Dict],
+        messages: list[dict],
         temperature: float = 0.7,
         max_tokens: int = 3000,
         *,
-        tools: List[Dict] | None = None,
+        tools: list[dict] | None = None,
         tool_choice: str | None = None,
         timeout: float | None = None,
+        disable_thinking: bool = False,
+        json_mode: bool = False,
     ) -> str:
         """Call DeepSeek API (OpenAI-compatible)"""
         if not self.api_key:
@@ -300,12 +346,15 @@ class AIService:
             "max_tokens": max_tokens,
             "stream": False
         }
+        if tools or disable_thinking:
+            # DeepSeek V4 Flash can spend the entire completion budget in
+            # reasoning mode and return an empty message.content.  Structured
+            # debate turns need a usable response body, so they opt out.
+            payload["thinking"] = {"type": "disabled"}
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
         if tools:
             payload["tools"] = tools
-            # DeepSeek V4 Flash enables thinking by default. Its thinking mode
-            # rejects explicit tool_choice, so the small routing/answer calls
-            # use non-thinking mode while all other AI features stay unchanged.
-            payload["thinking"] = {"type": "disabled"}
             if tool_choice:
                 payload["tool_choice"] = tool_choice
         async with httpx.AsyncClient(timeout=timeout or settings.KNOWLEDGE_LLM_TIMEOUT_SECONDS) as client:
@@ -320,8 +369,8 @@ class AIService:
 
     async def _call_tool_api(
         self,
-        messages: List[Dict],
-        tools: List[Dict],
+        messages: list[dict],
+        tools: list[dict],
         *,
         tool_choice: str = "required",
         max_tokens: int = 400,
@@ -360,7 +409,7 @@ class AIService:
     async def select_knowledge_tool(
         self,
         question: str,
-        history: List[Dict] | None = None,
+        history: list[dict] | None = None,
     ) -> dict:
         """Force the model to choose between grounded search and platform help."""
         tools = [
@@ -473,7 +522,7 @@ class AIService:
         """Clean markdown code fences and common JSON errors from AI response"""
         import re
         text = text.strip()
-        text = re.sub(r'^```(?:json)?\s*\n?', '', text)
+        text = re.sub(r'^```(?:json)?\s*\n?', '', text, flags=re.IGNORECASE)
         text = re.sub(r'\n?```\s*$', '', text)
         # Try direct parse first
         try:
@@ -494,7 +543,7 @@ class AIService:
                 return json.loads(obj_match.group(0))
             except json.JSONDecodeError:
                 pass
-        raise
+        raise AIResponseValidationError("AI 返回内容不是有效 JSON")
 
     # ===== Interview (5-phase, difficulty-aware, adaptive) =====
     def _interview_system_prompt(self, difficulty: str) -> str:
@@ -509,7 +558,7 @@ class AIService:
         resp = await self._call_api(msgs, temperature=0.8)
         return validate_interview_turn(self._parse_json(resp))
 
-    async def interview_respond(self, conversation: List[Dict], difficulty: str = "intermediate", phase: str = "自我认知", evaluated_phase: str = "开场寒暄", final_turn: bool = False) -> dict:
+    async def interview_respond(self, conversation: list[dict], difficulty: str = "intermediate", phase: str = "自我认知", evaluated_phase: str = "开场寒暄", final_turn: bool = False) -> dict:
         system_prompt = self._interview_system_prompt(difficulty)
         msgs = [{"role": "system", "content": system_prompt}]
         for turn in conversation:
@@ -523,7 +572,7 @@ class AIService:
         resp = await self._call_api(msgs, temperature=0.25)
         return validate_interview_turn(self._parse_json(resp))
 
-    async def interview_report(self, conversation: List[Dict]) -> dict:
+    async def interview_report(self, conversation: list[dict]) -> dict:
         history = "\n".join([f"{'学生' if t['role']=='user' else '老师'}：{t['content']}" for t in conversation])
         msgs = [
             {"role": "system", "content": INTERVIEW_REPORT_PROMPT},
@@ -562,7 +611,7 @@ class AIService:
         ]
         return await self._call_api(msgs, temperature=0.7, max_tokens=1500)
 
-    async def tour_report(self, site_name: str, qa_history: List[str]) -> str:
+    async def tour_report(self, site_name: str, qa_history: list[str]) -> str:
         history = "\n".join(qa_history)
         msgs = [
             {"role": "system", "content": "你是一位研学报告撰写助手。"},
@@ -571,7 +620,7 @@ class AIService:
         return await self._call_api(msgs, temperature=0.7, max_tokens=2000)
 
     # ===== Debate (4-phase, stage-aware, stance-aware) =====
-    async def debate_generate_topics(self) -> List[Dict]:
+    async def debate_generate_topics(self) -> list[dict]:
         msgs = [
             {"role": "system", "content": DEBATE_TOPICS_PROMPT},
             {"role": "user", "content": "请生成3个辩论题目。直接回复JSON数组格式。"}
@@ -584,38 +633,71 @@ class AIService:
         side = "正" if stance == "con" else "反"
         msgs = [
             {"role": "system", "content": DEBATE_OPEN_PROMPT.format(side=side, topic=topic)},
-            {"role": "user", "content": f"请开始你的立论。"}
+            {"role": "user", "content": "请开始你的立论。"}
         ]
         return await self._call_api(msgs, temperature=0.8, max_tokens=1500)
 
-    async def debate_argue(self, topic: str, stance: str, argument: str, conversation: List[Dict], stage: str = "rebuttal", step: str = "user_rebuttal", evidence: List[Dict] | None = None) -> dict:
+    async def debate_argue(self, topic: str, stance: str, argument: str, conversation: list[dict], stage: str = "rebuttal", step: str = "user_rebuttal", evidence: list[dict] | None = None) -> dict:
         side = "正方" if stance == "con" else "反方"
         stage_instruction = DEBATE_STEP_PROMPTS.get(step, DEBATE_STAGE_PROMPTS.get(stage, DEBATE_STAGE_PROMPTS["rebuttal"]))
-        history = "\n".join([f"{'正方' if t.get('stance')=='pro' else '反方'}：{t['content']}" for t in conversation])
-        evidence_text = "\n".join(f"[{item.get('document_title','资料')}] {item.get('excerpt','')}" for item in (evidence or []))
+        history = _recent_debate_history(
+            conversation,
+            total_limit=settings.DEBATE_HISTORY_MAX_CHARS,
+            message_limit=settings.DEBATE_HISTORY_MESSAGE_MAX_CHARS,
+            label_for_turn=lambda turn: "正方" if turn.get("stance") == "pro" else "反方",
+        )
+        argument = _clip_prompt_text(argument, settings.DEBATE_ARGUMENT_MAX_CHARS)
+        evidence_text = _debate_evidence_context(evidence)
         msgs = [
             {"role": "system", "content": f"你同时扮演两个角色，务必严格分开：1) {side}方辩手——用 argument 字段输出你作为对手的赛场回应；2) 用户的陪练导师——用 coach_feedback 和 argument_map 站在用户一方，针对其刚提交的陈词分析优点、指出可改进处并给出下一步建议，绝不用对手口吻挑刺。辩题：{topic}。{stage_instruction}\n"
              "coach_feedback 和 argument_map 必须只分析用户刚提交的陈词，不能分析或复述你自己的回应。保持礼貌但犀利，只输出JSON。"},
-            {"role": "user", "content": f"辩论历史：\n{history}\n\n用户最新陈词：{argument}\n用户引用资料：\n{evidence_text or '无'}\n"
+            {"role": "user", "content": f"最近辩论交锋（完整记录已保存，本次仅提供最近内容）：\n{history or '无'}\n\n用户最新陈词：{argument}\n用户引用资料：\n{evidence_text or '无'}\n"
              "请回复JSON。argument_map 中 claims 提取用户主张，evidence 提取用户使用的事实或资料，reasoning 提取用户从依据到主张的推理链，gaps 指出用户陈词尚未补齐的逻辑缺口；coach_feedback 也只评价用户本轮表现。"
              "格式：{\"argument\":\"你的赛场回应\",\"coach_feedback\":{\"stage_fit\":\"阶段匹配评价\",\"strength\":\"用户本轮优势\",\"next_action\":\"给用户的一条可执行建议\"},\"argument_map\":{\"claims\":[\"用户主张\"],\"evidence\":[\"用户证据\"],\"reasoning\":[\"用户推理链\"],\"gaps\":[\"用户逻辑缺口\"]}}"}
         ]
-        resp = await self._call_api(msgs, temperature=0.35, max_tokens=2500)
-        return validate_debate_turn(self._parse_json(resp))
+        resp = await self._call_api(
+            msgs, temperature=0.35, max_tokens=2500,
+            timeout=settings.DEBATE_LLM_TIMEOUT_SECONDS, disable_thinking=True, json_mode=True,
+        )
+        try:
+            parsed = self._parse_json(resp)
+        except AIResponseValidationError:
+            # Some providers occasionally ignore the JSON-only instruction.
+            # A plain reply is still useful as the opponent's argument, and
+            # validate_debate_turn deliberately supports this compatibility path.
+            return validate_debate_turn(resp)
+        return validate_debate_turn(parsed)
 
-    async def debate_feedback(self, topic: str, conversation: List[Dict], user_stance: str = "pro") -> Dict:
+    async def debate_feedback(self, topic: str, conversation: list[dict], user_stance: str = "pro") -> dict:
         stance_label = "正方" if user_stance == "pro" else "反方"
-        history = "\n".join([
-            f"{'【用户/正方】' if t.get('role') == 'user' and t.get('stance') == 'pro' else '【用户/反方】' if t.get('role') == 'user' and t.get('stance') == 'con' else '【AI对手】' if t.get('role') == 'ai' else ''}：{t['content']}"
-            for t in conversation
-        ])
+        history = _recent_debate_history(
+            conversation,
+            total_limit=settings.DEBATE_REPORT_HISTORY_MAX_CHARS,
+            message_limit=settings.DEBATE_HISTORY_MESSAGE_MAX_CHARS,
+            label_for_turn=lambda turn: (
+                "【用户/正方】" if turn.get("role") == "user" and turn.get("stance") == "pro"
+                else "【用户/反方】" if turn.get("role") == "user" and turn.get("stance") == "con"
+                else "【AI对手】" if turn.get("role") == "ai" else "【辩论记录】"
+            ),
+        )
         system_prompt = DEBATE_FEEDBACK_PROMPT.replace("{stance_label}", stance_label)
         msgs = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"辩题：{topic}\n辩论记录：\n{history}\n\n请评分。直接回复JSON。"}
         ]
-        resp = await self._call_api(msgs, temperature=0.3, max_tokens=4000)
-        return validate_debate_feedback(self._parse_json(resp))
+        last_error: AIResponseValidationError | None = None
+        for _attempt in range(2):
+            resp = await self._call_api(
+                msgs, temperature=0.3, max_tokens=4000,
+                timeout=settings.DEBATE_LLM_TIMEOUT_SECONDS, disable_thinking=True, json_mode=True,
+            )
+            try:
+                return validate_debate_feedback(self._parse_json(resp))
+            except AIResponseValidationError as exc:
+                # The provider occasionally ignores JSON mode. One immediate
+                # retry is enough in practice and avoids making users retry.
+                last_error = exc
+        raise last_error or AIResponseValidationError("AI 返回的评估报告无效")
 
     # ===== Template Generation =====
     async def generate_template(self, template_type: str, user_info: str = "") -> str:
@@ -629,16 +711,16 @@ class AIService:
             raise AIResponseValidationError("AI 返回的模板内容为空")
         return content
 
-    async def relevance_filter(self, question: str, contexts: List[Dict]) -> List[Dict]:
+    async def relevance_filter(self, question: str, contexts: list[dict]) -> list[dict]:
         """Sort contexts by existing retrieval score (RRF fusion), keep top 6. No LLM call."""
         return sorted(contexts, key=lambda c: c.get('score', 0), reverse=True)[:6]
 
     async def knowledge_answer(
         self,
         question: str,
-        contexts: List[Dict],
-        history: List[Dict] | None = None,
-        tool_call: Dict | None = None,
+        contexts: list[dict],
+        history: list[dict] | None = None,
+        tool_call: dict | None = None,
     ) -> dict | str:
         evidence_items = [
             {

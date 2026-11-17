@@ -1,6 +1,6 @@
 """JWT authentication and role dependencies."""
-from datetime import datetime, timedelta, timezone
-from typing import Callable
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -15,7 +15,7 @@ bearer = HTTPBearer(auto_error=False)
 
 
 def create_access_token(user: User) -> str:
-    expires = datetime.now(timezone.utc) + timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
+    expires = datetime.now(UTC) + timedelta(minutes=settings.JWT_EXPIRE_MINUTES)
     return jwt.encode(
         {"sub": user.id, "role": user.role, "exp": expires},
         settings.JWT_SECRET_KEY,
@@ -27,6 +27,7 @@ def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(bearer),
     db: Session = Depends(get_db),
 ) -> User:
+    """解析 Bearer Token 并返回当前用户；未登录、令牌失效或账号停用均抛 401。"""
     if not credentials:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="请先登录")
     try:
@@ -71,6 +72,8 @@ def get_optional_user(
 
 
 def require_role(*roles: str) -> Callable:
+    """生成角色守卫依赖：当前用户角色不在允许列表内时返回 403。"""
+
     def dependency(user: User = Depends(get_current_user)) -> User:
         if user.role not in roles:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="权限不足")

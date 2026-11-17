@@ -1,6 +1,8 @@
+"""数据库引擎与会话管理：支持 SQLite（开发）与 PostgreSQL（生产）。"""
 from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker, DeclarativeBase
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from sqlalchemy.pool import StaticPool
+
 from app.config import settings
 
 DATABASE_URL = settings.DATABASE_URL_SYNC

@@ -1,26 +1,30 @@
+"""成长社区路由：帖子、问答、回复、附件、通知、内容审核与教师任务。"""
 from __future__ import annotations
 
 import io
-import json
 import logging
-import re
-import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile, status
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import and_, delete, desc, func, or_, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import delete, func, or_, select
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.database import get_db
 from app.models.community import (
-    CommunityAttachment, CommunityContentReport, CommunityFavorite, CommunityLike,
-    CommunityNotification, CommunityPost, CommunityPostView, CommunityReply,
-    CommunityReplyLike, CommunityTopicFollow,
+    CommunityAttachment,
+    CommunityContentReport,
+    CommunityFavorite,
+    CommunityLike,
+    CommunityNotification,
+    CommunityPost,
+    CommunityPostView,
+    CommunityReply,
+    CommunityReplyLike,
+    CommunityTopicFollow,
 )
 from app.models.domain import TaskRubricCriterion, TaskRubricScore, TaskSubmission, TeacherTask
 from app.models.user import User
@@ -292,7 +296,9 @@ def _criteria(db: Session, task_id: str) -> list[TaskRubricCriterion]:
     ).order_by(TaskRubricCriterion.sort_order)).all())
     if not rows:
         criterion = TaskRubricCriterion(task_id=task_id, title="完成质量", weight=100, sort_order=0)
-        db.add(criterion); db.flush(); rows = [criterion]
+        db.add(criterion)
+        db.flush()
+        rows = [criterion]
     return rows
 
 
@@ -335,12 +341,17 @@ def feed(
 ):
     _ensure_community_guide(db)
     conditions = [CommunityPost.status == "active", CommunityPost.moderation_status == "published"]
-    if section == "post": conditions.append(CommunityPost.is_question.is_(False))
-    if section == "question": conditions.append(CommunityPost.is_question.is_(True))
-    if sort_by == "unanswered": conditions.extend([CommunityPost.is_question.is_(True), CommunityPost.resolved.is_(False)])
-    if topic: conditions.append(CommunityPost.category == topic)
+    if section == "post":
+        conditions.append(CommunityPost.is_question.is_(False))
+    if section == "question":
+        conditions.append(CommunityPost.is_question.is_(True))
+    if sort_by == "unanswered":
+        conditions.extend([CommunityPost.is_question.is_(True), CommunityPost.resolved.is_(False)])
+    if topic:
+        conditions.append(CommunityPost.category == topic)
     if q.strip():
-        term = f"%{q.strip()}%"; conditions.append(or_(CommunityPost.title.ilike(term), CommunityPost.content.ilike(term)))
+        term = f"%{q.strip()}%"
+        conditions.append(or_(CommunityPost.title.ilike(term), CommunityPost.content.ilike(term)))
     followed = list(db.scalars(select(CommunityTopicFollow.topic).where(CommunityTopicFollow.user_id == user.id)).all())
     if sort_by == "followed":
         if not followed:
@@ -369,10 +380,13 @@ def feed(
 def list_posts(kind: str = Query(default="all", pattern=r"^(all|question|post)$"), q: str = "", page: int = 1,
                page_size: int = 15, user: User | None = Depends(get_optional_user), db: Session = Depends(get_db)):
     conditions = [CommunityPost.status == "active", CommunityPost.moderation_status == "published"]
-    if kind == "question": conditions.append(CommunityPost.is_question.is_(True))
-    elif kind == "post": conditions.append(CommunityPost.is_question.is_(False))
+    if kind == "question":
+        conditions.append(CommunityPost.is_question.is_(True))
+    elif kind == "post":
+        conditions.append(CommunityPost.is_question.is_(False))
     if q.strip():
-        term = f"%{q.strip()}%"; conditions.append(or_(CommunityPost.title.ilike(term), CommunityPost.content.ilike(term)))
+        term = f"%{q.strip()}%"
+        conditions.append(or_(CommunityPost.title.ilike(term), CommunityPost.content.ilike(term)))
     total = int(db.scalar(select(func.count()).select_from(CommunityPost).where(*conditions)) or 0)
     rows = db.scalars(select(CommunityPost).where(*conditions).order_by(CommunityPost.pinned.desc(), CommunityPost.created_at.desc()).offset((page - 1) * page_size).limit(min(page_size, 50))).all()
     return {"code": 0, "data": [post_payload(db, row, user) for row in rows], "pagination": {"page": page, "page_size": page_size, "total": total}}
@@ -382,13 +396,16 @@ def list_posts(kind: str = Query(default="all", pattern=r"^(all|question|post)$"
 def create_post(data: PostCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     if data.submission_id:
         existing = db.scalar(select(CommunityPost).where(CommunityPost.user_id == user.id, CommunityPost.submission_id == data.submission_id))
-        if existing: return {"code": 0, "data": post_payload(db, existing, user), "message": "发布成功"}
+        if existing:
+            return {"code": 0, "data": post_payload(db, existing, user), "message": "发布成功"}
     moderation_status = "pending_review" if _contains_sensitive_text(data.title, data.content) else "published"
     post = CommunityPost(
         user_id=user.id, title=data.title.strip(), content=data.content.strip(), category=data.category,
         is_question=data.is_question, moderation_status=moderation_status, submission_id=data.submission_id,
     )
-    db.add(post); db.flush(); _bind_attachments(db, user, data.attachment_ids, "post", post.id)
+    db.add(post)
+    db.flush()
+    _bind_attachments(db, user, data.attachment_ids, "post", post.id)
     followers = db.scalars(select(CommunityTopicFollow.user_id).where(CommunityTopicFollow.topic == post.category)).all()
     for follower_id in followers:
         _notify(db, user_id=follower_id, actor_id=user.id, kind="topic_post", title=f"{post.category}有新内容",
@@ -400,14 +417,16 @@ def create_post(data: PostCreate, user: User = Depends(get_current_user), db: Se
 def update_post(post_id: str, data: PostUpdate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     post = _owned_post(db, post_id, user)
     post.title, post.content, post.category = data.title.strip(), data.content.strip(), data.category
-    if _contains_sensitive_text(post.title, post.content): post.moderation_status = "pending_review"
+    if _contains_sensitive_text(post.title, post.content):
+        post.moderation_status = "pending_review"
     _bind_attachments(db, user, data.attachment_ids, "post", post.id)
     return {"code": 0, "data": post_payload(db, post, user), "message": "修改成功"}
 
 
 @router.delete("/posts/{post_id}")
 def delete_post(post_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    post = _owned_post(db, post_id, user); post.status = "deleted"
+    post = _owned_post(db, post_id, user)
+    post.status = "deleted"
     return {"code": 0, "data": {"id": post.id, "deleted": True}}
 
 
@@ -419,7 +438,8 @@ def get_post(post_id: str, user: User | None = Depends(get_optional_user), db: S
         if not db.scalar(select(CommunityPostView.id).where(
             CommunityPostView.user_id == user.id, CommunityPostView.post_id == post.id, CommunityPostView.view_bucket == bucket,
         )):
-            db.add(CommunityPostView(user_id=user.id, post_id=post.id, view_bucket=bucket)); post.view_count += 1
+            db.add(CommunityPostView(user_id=user.id, post_id=post.id, view_bucket=bucket))
+            post.view_count += 1
     replies = list(db.scalars(select(CommunityReply).where(
         CommunityReply.post_id == post.id, CommunityReply.status == "active",
     ).order_by(CommunityReply.created_at)).all())
@@ -444,14 +464,18 @@ def create_reply(post_id: str, data: ReplyCreate, user: User = Depends(get_curre
             CommunityReply.submission_id == data.submission_id,
         ))
         if existing:
-            authors = {user.id: user}; return {"code": 0, "data": _reply_payload(db, existing, user, authors)}
+            authors = {user.id: user}
+            return {"code": 0, "data": _reply_payload(db, existing, user, authors)}
     parent = db.get(CommunityReply, data.parent_reply_id) if data.parent_reply_id else None
-    if parent and parent.post_id != post.id: raise HTTPException(status_code=422, detail="回复目标不属于当前帖子")
+    if parent and parent.post_id != post.id:
+        raise HTTPException(status_code=422, detail="回复目标不属于当前帖子")
     reply = CommunityReply(
         post_id=post.id, user_id=user.id, content=data.content.strip(), parent_reply_id=parent.id if parent else None,
         is_teacher=user.role in {"teacher", "admin"}, submission_id=data.submission_id,
     )
-    db.add(reply); db.flush(); post.replies_count += 1
+    db.add(reply)
+    db.flush()
+    post.replies_count += 1
     receiver = parent.user_id if parent else post.user_id
     _notify(db, user_id=receiver, actor_id=user.id, kind="reply", title=f"{user.nickname}回复了你",
             content=reply.content, resource_type="post", resource_id=post.id, event_key=f"reply:{reply.id}")
@@ -461,23 +485,29 @@ def create_reply(post_id: str, data: ReplyCreate, user: User = Depends(get_curre
 @router.delete("/replies/{reply_id}")
 def delete_reply(reply_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     reply = db.get(CommunityReply, reply_id)
-    if not reply or reply.status != "active": raise HTTPException(status_code=404, detail="回复不存在")
-    if reply.user_id != user.id and user.role not in {"teacher", "admin"}: raise HTTPException(status_code=403, detail="无权删除该回复")
-    reply.status = "deleted"; post = db.get(CommunityPost, reply.post_id)
-    if post: post.replies_count = max(0, post.replies_count - 1)
+    if not reply or reply.status != "active":
+        raise HTTPException(status_code=404, detail="回复不存在")
+    if reply.user_id != user.id and user.role not in {"teacher", "admin"}:
+        raise HTTPException(status_code=403, detail="无权删除该回复")
+    reply.status = "deleted"
+    post = db.get(CommunityPost, reply.post_id)
+    if post:
+        post.replies_count = max(0, post.replies_count - 1)
     return {"code": 0, "data": {"deleted": True}}
 
 
 @router.post("/posts/{post_id}/resolve/{reply_id}")
 def resolve_question(post_id: str, reply_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     post = _owned_post(db, post_id, user)
-    if not post.is_question: raise HTTPException(status_code=409, detail="该帖子不是问答")
+    if not post.is_question:
+        raise HTTPException(status_code=409, detail="该帖子不是问答")
     if post.resolved:
         if post.accepted_reply_id == reply_id:
             return {"code": 0, "data": {"resolved": True, "accepted_reply_id": reply_id, "points_awarded": 0}}
         raise HTTPException(status_code=409, detail="问题已经采纳其他回答")
     reply = db.get(CommunityReply, reply_id)
-    if not reply or reply.post_id != post.id or reply.status != "active": raise HTTPException(status_code=404, detail="回复不存在")
+    if not reply or reply.post_id != post.id or reply.status != "active":
+        raise HTTPException(status_code=404, detail="回复不存在")
     post.resolved, post.accepted_reply_id = True, reply.id
     awarded = False
     answerer = db.get(User, reply.user_id)
@@ -492,51 +522,63 @@ def resolve_question(post_id: str, reply_id: str, user: User = Depends(get_curre
 def _toggle_post_relation(db: Session, model, post: CommunityPost, user: User, enabled: bool, count_field: str) -> dict:
     existing = db.scalar(select(model).where(model.post_id == post.id, model.user_id == user.id))
     if enabled and not existing:
-        db.add(model(post_id=post.id, user_id=user.id)); setattr(post, count_field, getattr(post, count_field) + 1)
+        db.add(model(post_id=post.id, user_id=user.id))
+        setattr(post, count_field, getattr(post, count_field) + 1)
     elif not enabled and existing:
-        db.delete(existing); setattr(post, count_field, max(0, getattr(post, count_field) - 1))
+        db.delete(existing)
+        setattr(post, count_field, max(0, getattr(post, count_field) - 1))
     return {"enabled": enabled, "count": getattr(post, count_field)}
 
 
 @router.post("/posts/{post_id}/like")
 def like_post(post_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    post = _visible_post(db, post_id, user); value = _toggle_post_relation(db, CommunityLike, post, user, True, "likes_count")
+    post = _visible_post(db, post_id, user)
+    value = _toggle_post_relation(db, CommunityLike, post, user, True, "likes_count")
     return {"code": 0, "data": {"likes": value["count"], "liked": True}}
 
 
 @router.delete("/posts/{post_id}/like")
 def unlike_post(post_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    post = _visible_post(db, post_id, user); value = _toggle_post_relation(db, CommunityLike, post, user, False, "likes_count")
+    post = _visible_post(db, post_id, user)
+    value = _toggle_post_relation(db, CommunityLike, post, user, False, "likes_count")
     return {"code": 0, "data": {"likes": value["count"], "liked": False}}
 
 
 @router.post("/posts/{post_id}/favorite")
 def favorite_post(post_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    post = _visible_post(db, post_id, user); value = _toggle_post_relation(db, CommunityFavorite, post, user, True, "favorites_count")
+    post = _visible_post(db, post_id, user)
+    value = _toggle_post_relation(db, CommunityFavorite, post, user, True, "favorites_count")
     return {"code": 0, "data": {"favorites": value["count"], "favorited": True}}
 
 
 @router.delete("/posts/{post_id}/favorite")
 def unfavorite_post(post_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    post = _visible_post(db, post_id, user); value = _toggle_post_relation(db, CommunityFavorite, post, user, False, "favorites_count")
+    post = _visible_post(db, post_id, user)
+    value = _toggle_post_relation(db, CommunityFavorite, post, user, False, "favorites_count")
     return {"code": 0, "data": {"favorites": value["count"], "favorited": False}}
 
 
 @router.post("/replies/{reply_id}/like")
 def like_reply(reply_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     reply = db.get(CommunityReply, reply_id)
-    if not reply or reply.status != "active": raise HTTPException(status_code=404, detail="回复不存在")
+    if not reply or reply.status != "active":
+        raise HTTPException(status_code=404, detail="回复不存在")
     existing = db.scalar(select(CommunityReplyLike).where(CommunityReplyLike.reply_id == reply.id, CommunityReplyLike.user_id == user.id))
-    if not existing: db.add(CommunityReplyLike(reply_id=reply.id, user_id=user.id)); reply.likes_count += 1
+    if not existing:
+        db.add(CommunityReplyLike(reply_id=reply.id, user_id=user.id))
+        reply.likes_count += 1
     return {"code": 0, "data": {"likes": reply.likes_count, "liked": True}}
 
 
 @router.delete("/replies/{reply_id}/like")
 def unlike_reply(reply_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     reply = db.get(CommunityReply, reply_id)
-    if not reply: raise HTTPException(status_code=404, detail="回复不存在")
+    if not reply:
+        raise HTTPException(status_code=404, detail="回复不存在")
     existing = db.scalar(select(CommunityReplyLike).where(CommunityReplyLike.reply_id == reply.id, CommunityReplyLike.user_id == user.id))
-    if existing: db.delete(existing); reply.likes_count = max(0, reply.likes_count - 1)
+    if existing:
+        db.delete(existing)
+        reply.likes_count = max(0, reply.likes_count - 1)
     return {"code": 0, "data": {"likes": reply.likes_count, "liked": False}}
 
 
@@ -551,7 +593,8 @@ def topics(user: User = Depends(get_current_user), db: Session = Depends(get_db)
 
 @router.post("/topics/{topic}/follow")
 def follow_topic(topic: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    if topic not in TOPICS: raise HTTPException(status_code=404, detail="分类不存在")
+    if topic not in TOPICS:
+        raise HTTPException(status_code=404, detail="分类不存在")
     if not db.scalar(select(CommunityTopicFollow.id).where(CommunityTopicFollow.user_id == user.id, CommunityTopicFollow.topic == topic)):
         db.add(CommunityTopicFollow(user_id=user.id, topic=topic))
     return {"code": 0, "data": {"topic": topic, "followed": True}}
@@ -560,7 +603,8 @@ def follow_topic(topic: str, user: User = Depends(get_current_user), db: Session
 @router.delete("/topics/{topic}/follow")
 def unfollow_topic(topic: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     row = db.scalar(select(CommunityTopicFollow).where(CommunityTopicFollow.user_id == user.id, CommunityTopicFollow.topic == topic))
-    if row: db.delete(row)
+    if row:
+        db.delete(row)
     return {"code": 0, "data": {"topic": topic, "followed": False}}
 
 
@@ -581,14 +625,16 @@ def notifications(page: int = 1, page_size: int = 20, user: User = Depends(get_c
 @router.post("/notifications/read-all")
 def read_all_notifications(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     rows = db.scalars(select(CommunityNotification).where(CommunityNotification.user_id == user.id, CommunityNotification.is_read.is_(False))).all()
-    for row in rows: row.is_read = True
+    for row in rows:
+        row.is_read = True
     return {"code": 0, "data": {"updated": len(rows)}}
 
 
 @router.post("/notifications/{notification_id}/read")
 def read_notification(notification_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     row = db.get(CommunityNotification, notification_id)
-    if not row or row.user_id != user.id: raise HTTPException(status_code=404, detail="消息不存在")
+    if not row or row.user_id != user.id:
+        raise HTTPException(status_code=404, detail="消息不存在")
     row.is_read = True
     return {"code": 0, "data": {"id": row.id, "is_read": True}}
 
@@ -612,12 +658,14 @@ def my_community(user: User = Depends(get_current_user), db: Session = Depends(g
 @router.post("/reports")
 def report_content(data: ReportCreate, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     target = db.get(CommunityPost if data.target_type == "post" else CommunityReply, data.target_id)
-    if not target: raise HTTPException(status_code=404, detail="举报内容不存在")
+    if not target:
+        raise HTTPException(status_code=404, detail="举报内容不存在")
     existing = db.scalar(select(CommunityContentReport).where(
         CommunityContentReport.reporter_id == user.id, CommunityContentReport.target_type == data.target_type,
         CommunityContentReport.target_id == data.target_id,
     ))
-    if not existing: db.add(CommunityContentReport(reporter_id=user.id, **data.model_dump()))
+    if not existing:
+        db.add(CommunityContentReport(reporter_id=user.id, **data.model_dump()))
     return {"code": 0, "data": {"reported": True}}
 
 
@@ -631,14 +679,19 @@ def moderation_reports(status_filter: str = "pending", _: User = Depends(manager
 @router.put("/moderation/reports/{report_id}")
 def moderate_report(report_id: str, data: ModerationAction, user: User = Depends(manager), db: Session = Depends(get_db)):
     row = db.get(CommunityContentReport, report_id)
-    if not row: raise HTTPException(status_code=404, detail="举报不存在")
+    if not row:
+        raise HTTPException(status_code=404, detail="举报不存在")
     target = db.get(CommunityPost if row.target_type == "post" else CommunityReply, row.target_id)
     if target and data.action == "hide":
-        if row.target_type == "post": target.moderation_status = "hidden"
-        else: target.status = "hidden"
+        if row.target_type == "post":
+            target.moderation_status = "hidden"
+        else:
+            target.status = "hidden"
     elif target and data.action == "restore":
-        if row.target_type == "post": target.moderation_status = "published"
-        else: target.status = "active"
+        if row.target_type == "post":
+            target.moderation_status = "published"
+        else:
+            target.status = "active"
     row.status = "dismissed" if data.action == "dismiss" else "resolved"
     row.reviewer_id, row.resolution, row.reviewed_at = user.id, data.resolution, _now()
     return {"code": 0, "data": {"id": row.id, "status": row.status}}
@@ -651,35 +704,43 @@ async def upload_attachment(purpose: str = Form(default="task"), file: UploadFil
         CommunityAttachment.status == "temporary", CommunityAttachment.expires_at < _now(),
     ).limit(30)).all()
     for item in expired:
-        try: delete_file(item.storage_key, item.storage_backend)
+        try:
+            delete_file(item.storage_key, item.storage_backend)
         except Exception as exc:
             logger.warning("[community] expired attachment cleanup failed key=%s error=%s: %s", item.storage_key, exc.__class__.__name__, exc)
         db.delete(item)
     allowed = IMAGE_TYPES if purpose == "post_image" else DOCUMENT_TYPES
     mime = (file.content_type or "").lower()
-    if mime not in allowed: raise HTTPException(status_code=415, detail="不支持的附件格式")
+    if mime not in allowed:
+        raise HTTPException(status_code=415, detail="不支持的附件格式")
     limit = 5 * 1024 * 1024 if purpose == "post_image" else 20 * 1024 * 1024
     content = await file.read(limit + 1)
-    if len(content) > limit: raise HTTPException(status_code=413, detail=f"文件不能超过 {limit // 1024 // 1024}MB")
+    if len(content) > limit:
+        raise HTTPException(status_code=413, detail=f"文件不能超过 {limit // 1024 // 1024}MB")
     if mime in IMAGE_TYPES:
         try:
             from PIL import Image
-            with Image.open(io.BytesIO(content)) as image: image.verify()
+            with Image.open(io.BytesIO(content)) as image:
+                image.verify()
         except Exception as exc:
             raise HTTPException(status_code=415, detail="图片内容损坏或格式不正确") from exc
-    suffix = allowed[mime]; key = storage_key(suffix); backend = save_bytes(key, content, mime)
+    suffix = allowed[mime]
+    key = storage_key(suffix)
+    backend = save_bytes(key, content, mime)
     item = CommunityAttachment(
         owner_id=user.id, original_name=Path(file.filename or f"upload{suffix}").name,
         storage_key=key, storage_backend=backend, mime_type=mime, size=len(content), expires_at=_now() + timedelta(hours=24),
     )
-    db.add(item); db.flush()
+    db.add(item)
+    db.flush()
     return {"code": 0, "data": _attachment_payload(item)}
 
 
 @router.get("/attachments/{attachment_id}")
 def download_attachment(attachment_id: str, user: User | None = Depends(get_optional_user), db: Session = Depends(get_db)):
     item = db.get(CommunityAttachment, attachment_id)
-    if not item: raise HTTPException(status_code=404, detail="附件不存在")
+    if not item:
+        raise HTTPException(status_code=404, detail="附件不存在")
     public_post_image = False
     if item.target_type == "post" and item.status == "attached" and item.mime_type in IMAGE_TYPES:
         post = db.get(CommunityPost, item.target_id)
@@ -701,24 +762,30 @@ def download_attachment(attachment_id: str, user: User | None = Depends(get_opti
             allowed = bool(submission and submission.user_id == user.id)
         if not allowed:
             raise HTTPException(status_code=403, detail="无权访问该附件")
-    try: source, _ = read_file(item.storage_key, item.storage_backend)
-    except FileNotFoundError as exc: raise HTTPException(status_code=404, detail="附件文件不存在") from exc
-    if isinstance(source, Path): return FileResponse(source, filename=item.original_name, media_type=item.mime_type)
+    try:
+        source, _ = read_file(item.storage_key, item.storage_backend)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="附件文件不存在") from exc
+    if isinstance(source, Path):
+        return FileResponse(source, filename=item.original_name, media_type=item.mime_type)
     return StreamingResponse(source, media_type=item.mime_type, headers={"Content-Disposition": f'inline; filename="{item.original_name}"'})
 
 
 @router.delete("/attachments/{attachment_id}")
 def remove_attachment(attachment_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     item = db.get(CommunityAttachment, attachment_id)
-    if not item or (item.owner_id != user.id and user.role not in {"teacher", "admin"}): raise HTTPException(status_code=404, detail="附件不存在")
-    delete_file(item.storage_key, item.storage_backend); db.delete(item)
+    if not item or (item.owner_id != user.id and user.role not in {"teacher", "admin"}):
+        raise HTTPException(status_code=404, detail="附件不存在")
+    delete_file(item.storage_key, item.storage_backend)
+    db.delete(item)
     return {"code": 0, "data": {"deleted": True}}
 
 
 @router.get("/tasks")
 def list_tasks(user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     query = select(TeacherTask)
-    if user.role not in {"teacher", "admin"}: query = query.where(TeacherTask.status == "published")
+    if user.role not in {"teacher", "admin"}:
+        query = query.where(TeacherTask.status == "published")
     rows = db.scalars(query.order_by(TeacherTask.created_at.desc())).all()
     return {"code": 0, "data": [_task_payload(db, row, user) for row in rows]}
 
@@ -727,8 +794,10 @@ def list_tasks(user: User = Depends(get_current_user), db: Session = Depends(get
 def create_task(data: TaskCreate, user: User = Depends(manager), db: Session = Depends(get_db)):
     task = TeacherTask(creator_id=user.id, title=data.title.strip(), description=data.description.strip(),
                        deadline=data.deadline, deadline_at=_parse_deadline(data.deadline), status=data.status)
-    db.add(task); db.flush()
-    for index, item in enumerate(data.rubric): db.add(TaskRubricCriterion(task_id=task.id, sort_order=index, **item.model_dump()))
+    db.add(task)
+    db.flush()
+    for index, item in enumerate(data.rubric):
+        db.add(TaskRubricCriterion(task_id=task.id, sort_order=index, **item.model_dump()))
     db.flush()
     _bind_attachments(db, user, data.attachment_ids, "task", task.id)
     if task.status == "published":
@@ -742,14 +811,16 @@ def create_task(data: TaskCreate, user: User = Depends(manager), db: Session = D
 @router.get("/tasks/{task_id}")
 def get_task(task_id: str, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     task = db.get(TeacherTask, task_id)
-    if not task or (task.status == "draft" and user.role not in {"teacher", "admin"}): raise HTTPException(status_code=404, detail="任务不存在")
+    if not task or (task.status == "draft" and user.role not in {"teacher", "admin"}):
+        raise HTTPException(status_code=404, detail="任务不存在")
     return {"code": 0, "data": _task_payload(db, task, user)}
 
 
 @router.put("/tasks/{task_id}")
 def update_task(task_id: str, data: TaskCreate, user: User = Depends(manager), db: Session = Depends(get_db)):
     task = db.get(TeacherTask, task_id)
-    if not task: raise HTTPException(status_code=404, detail="任务不存在")
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
     existing_criteria = _criteria(db, task.id)
     reviewed_count = int(db.scalar(select(func.count()).select_from(TaskSubmission).where(
         TaskSubmission.task_id == task.id, TaskSubmission.status == "reviewed",
@@ -772,7 +843,8 @@ def update_task(task_id: str, data: TaskCreate, user: User = Depends(manager), d
 @router.post("/tasks/{task_id}/publish")
 def publish_task(task_id: str, user: User = Depends(manager), db: Session = Depends(get_db)):
     task = db.get(TeacherTask, task_id)
-    if not task: raise HTTPException(status_code=404, detail="任务不存在")
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
     task.status = "published"
     students = db.scalars(select(User.id).where(User.is_active.is_(True), User.role == "student")).all()
     for student_id in students:
@@ -784,20 +856,27 @@ def publish_task(task_id: str, user: User = Depends(manager), db: Session = Depe
 @router.post("/tasks/{task_id}/close")
 def close_task(task_id: str, _: User = Depends(manager), db: Session = Depends(get_db)):
     task = db.get(TeacherTask, task_id)
-    if not task: raise HTTPException(status_code=404, detail="任务不存在")
-    task.status = "closed"; return {"code": 0, "data": {"id": task.id, "status": task.status}}
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
+    task.status = "closed"
+    return {"code": 0, "data": {"id": task.id, "status": task.status}}
 
 
 def _save_submission(task: TeacherTask, data: TaskSubmissionSave, user: User, db: Session, submit: bool) -> TaskSubmission:
-    if _task_status(task) != "published": raise HTTPException(status_code=409, detail="任务已截止或关闭")
+    if _task_status(task) != "published":
+        raise HTTPException(status_code=409, detail="任务已截止或关闭")
     item = db.scalar(select(TaskSubmission).where(TaskSubmission.task_id == task.id, TaskSubmission.user_id == user.id))
-    if item and item.status == "reviewed": raise HTTPException(status_code=409, detail="任务已批阅，不能再次修改")
-    if submit and len(data.content.strip()) < 2 and not data.attachment_ids: raise HTTPException(status_code=422, detail="请填写学习成果或上传附件")
+    if item and item.status == "reviewed":
+        raise HTTPException(status_code=409, detail="任务已批阅，不能再次修改")
+    if submit and len(data.content.strip()) < 2 and not data.attachment_ids:
+        raise HTTPException(status_code=422, detail="请填写学习成果或上传附件")
     if not item:
         item = TaskSubmission(task_id=task.id, user_id=user.id, content=data.content.strip(), status="draft")
-        db.add(item); db.flush()
+        db.add(item)
+        db.flush()
     item.content, item.updated_at = data.content.strip(), _now()
-    if submit: item.status, item.submitted_at = "submitted", _now()
+    if submit:
+        item.status, item.submitted_at = "submitted", _now()
     _bind_attachments(db, user, data.attachment_ids, "submission", item.id)
     return item
 
@@ -805,7 +884,8 @@ def _save_submission(task: TeacherTask, data: TaskSubmissionSave, user: User, db
 @router.patch("/tasks/{task_id}/submission")
 def save_submission_draft(task_id: str, data: TaskSubmissionSave, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     task = db.get(TeacherTask, task_id)
-    if not task: raise HTTPException(status_code=404, detail="任务不存在")
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
     item = _save_submission(task, data, user, db, False)
     return {"code": 0, "data": _submission_payload(db, item)}
 
@@ -813,7 +893,8 @@ def save_submission_draft(task_id: str, data: TaskSubmissionSave, user: User = D
 @router.post("/tasks/{task_id}/submission/submit")
 def submit_task_v2(task_id: str, data: TaskSubmissionSave, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     task = db.get(TeacherTask, task_id)
-    if not task: raise HTTPException(status_code=404, detail="任务不存在")
+    if not task:
+        raise HTTPException(status_code=404, detail="任务不存在")
     item = _save_submission(task, data, user, db, True)
     return {"code": 0, "data": _submission_payload(db, item)}
 
@@ -826,7 +907,8 @@ def submit_task_compat(task_id: str, data: TaskSubmissionSave, user: User = Depe
 @router.get("/tasks/{task_id}/submissions")
 def list_submissions(task_id: str, status_filter: str = "", _: User = Depends(manager), db: Session = Depends(get_db)):
     query = select(TaskSubmission).where(TaskSubmission.task_id == task_id)
-    if status_filter: query = query.where(TaskSubmission.status == status_filter)
+    if status_filter:
+        query = query.where(TaskSubmission.status == status_filter)
     rows = db.scalars(query.order_by(TaskSubmission.updated_at.desc())).all()
     users = {row.id: row for row in db.scalars(select(User).where(User.id.in_({item.user_id for item in rows}))).all()} if rows else {}
     return {"code": 0, "data": [{**(_submission_payload(db, row) or {}), "user_id": row.user_id,
@@ -836,21 +918,26 @@ def list_submissions(task_id: str, status_filter: str = "", _: User = Depends(ma
 @router.put("/tasks/submissions/{submission_id}/review")
 def review_submission(submission_id: str, data: SubmissionReview, user: User = Depends(manager), db: Session = Depends(get_db)):
     submission = db.get(TaskSubmission, submission_id)
-    if not submission: raise HTTPException(status_code=404, detail="提交记录不存在")
-    criteria = _criteria(db, submission.task_id); by_id = {row.id: row for row in criteria}
+    if not submission:
+        raise HTTPException(status_code=404, detail="提交记录不存在")
+    criteria = _criteria(db, submission.task_id)
+    by_id = {row.id: row for row in criteria}
     provided_scores = data.rubric_scores
     if not provided_scores and data.score is not None:
         provided_scores = [RubricScoreInput(criterion_id=row.id, score=data.score) for row in criteria]
     scores = {row.criterion_id: row for row in provided_scores}
-    if set(scores) != set(by_id): raise HTTPException(status_code=422, detail="请完成全部评价维度")
+    if set(scores) != set(by_id):
+        raise HTTPException(status_code=422, detail="请完成全部评价维度")
     db.execute(delete(TaskRubricScore).where(TaskRubricScore.submission_id == submission.id))
     total = 0.0
     for criterion in criteria:
-        value = scores[criterion.id]; total += value.score * criterion.weight / 100
+        value = scores[criterion.id]
+        total += value.score * criterion.weight / 100
         db.add(TaskRubricScore(submission_id=submission.id, criterion_id=criterion.id, score=value.score, comment=value.comment))
     submission.score, submission.feedback, submission.next_step = round(total), data.feedback, data.next_step
     submission.status, submission.reviewed_at = "reviewed", _now()
-    student = db.get(User, submission.user_id); awarded = False
+    student = db.get(User, submission.user_id)
+    awarded = False
     if student and submission.score >= 60:
         _, awarded = award_points(db, student, module="community", event_type="task_passed", source_id=submission.id,
                                   points=3, description="教师任务通过评阅")

@@ -10,12 +10,11 @@ from datetime import datetime
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from app.immersive_branch_content import BRANCH_STORIES
+from app.immersive_event_content import CLUE_POSITIONS, EVENT_TIMELINES, SCENE_CLUES
 from app.models.domain import TourRecord, TourSite
 from app.models.history import HistoryLearningRecord, HistoryScenario
 from app.models.immersive import ImmersiveBook, ImmersiveProgress, ImmersiveSpread
-from app.immersive_event_content import CLUE_POSITIONS, EVENT_TIMELINES, SCENE_CLUES
-from app.immersive_branch_content import BRANCH_STORIES
-
 
 HISTORY_BOOKS = [
     {

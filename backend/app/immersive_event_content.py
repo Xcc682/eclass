@@ -80,7 +80,7 @@ RAW_TIMELINES = {
 }
 
 EVENT_TIMELINES = {
-    book_id: [dict(zip(FIELDS, row)) for row in rows]
+    book_id: [dict(zip(FIELDS, row, strict=True)) for row in rows]
     for book_id, rows in RAW_TIMELINES.items()
 }
 

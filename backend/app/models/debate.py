@@ -1,8 +1,11 @@
-
+"""思政辩论模型：辩题、练习记录与逐轮交锋消息。"""
 import uuid
 from datetime import datetime
-from sqlalchemy import Column, String, Integer, DateTime, Text, Boolean, ForeignKey, Index, UniqueConstraint, text
+
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
+
 from app.database import Base
+
 
 def gen_uuid():
     return str(uuid.uuid4())

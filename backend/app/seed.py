@@ -4,13 +4,12 @@ import json
 from sqlalchemy import select
 
 from app.database import SessionLocal
+from app.immersive_seed import seed_immersive
 from app.models.debate import DebateTopic
 from app.models.domain import TeacherTask, TourSite
 from app.models.history import HistoryScenario
 from app.models.interview import InterviewScenario
 from app.models.knowledge import KnowledgeDocument, KnowledgeTemplate
-from app.immersive_seed import seed_immersive
-
 
 INTERVIEWS = [
     ("1", "入党积极分子谈话", "模拟党组织与入党积极分子的首次正式谈话", "beginner", 15, "张老师", "院党委组织委员"),

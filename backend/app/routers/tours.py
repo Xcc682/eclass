@@ -1,3 +1,4 @@
+"""红色研学路由：研学点位、导览讲解、手记与研学报告生成。"""
 import json
 from datetime import datetime
 
@@ -52,7 +53,8 @@ def get_site(site_id: str, db: Session = Depends(get_db)):
 
 @router.post("/sessions/start")
 def start_session(data: SiteRequest, user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    if not db.get(TourSite, data.site_id): raise HTTPException(status_code=404, detail="景点不存在")
+    if not db.get(TourSite, data.site_id):
+        raise HTTPException(status_code=404, detail="景点不存在")
     record = db.scalar(
         select(TourRecord)
         .where(
@@ -71,13 +73,15 @@ def start_session(data: SiteRequest, user: User = Depends(get_current_user), db:
             "resumed": True,
         }}
     record = TourRecord(user_id=user.id, site_id=data.site_id, qa_json="[]", completed=False)
-    db.add(record); db.flush()
+    db.add(record)
+    db.flush()
     return {"code": 0, "data": {"id": record.id, "site_id": record.site_id, "qa_history": [], "completed": False, "resumed": False}}
 
 
 def owned_record(db: Session, record_id: str, user: User) -> TourRecord:
     record = db.get(TourRecord, record_id)
-    if not record or record.user_id != user.id: raise HTTPException(status_code=404, detail="研学记录不存在")
+    if not record or record.user_id != user.id:
+        raise HTTPException(status_code=404, detail="研学记录不存在")
     return record
 
 
@@ -110,8 +114,11 @@ async def ask_question(data: AskRequest, user: User = Depends(get_current_user),
         raise HTTPException(status_code=503, detail=f"AI 服务暂不可用：{exc}") from exc
     if data.record_id:
         record = owned_record(db, data.record_id, user)
-        if record.completed: raise HTTPException(status_code=409, detail="研学记录已完成")
-        history = json.loads(record.qa_json or "[]"); history.append({"q": data.question, "a": answer}); record.qa_json = json.dumps(history, ensure_ascii=False)
+        if record.completed:
+            raise HTTPException(status_code=409, detail="研学记录已完成")
+        history = json.loads(record.qa_json or "[]")
+        history.append({"q": data.question, "a": answer})
+        record.qa_json = json.dumps(history, ensure_ascii=False)
     return {"code": 0, "data": {"answer": answer}}
 
 
@@ -139,8 +146,12 @@ async def generate_report(data: ReportRequest, user: User = Depends(get_current_
     except Exception as exc:
         raise HTTPException(status_code=503, detail=f"AI 服务暂不可用：{exc}") from exc
     if record is None:
-        record = TourRecord(user_id=user.id, site_id=site.id, qa_json=json.dumps(data.qa_history, ensure_ascii=False)); db.add(record); db.flush()
-    record.report = report_text; record.completed = True; record.completed_at = datetime.utcnow()
+        record = TourRecord(user_id=user.id, site_id=site.id, qa_json=json.dumps(data.qa_history, ensure_ascii=False))
+        db.add(record)
+        db.flush()
+    record.report = report_text
+    record.completed = True
+    record.completed_at = datetime.utcnow()
     award_points(
         db, user,
         module="tour", event_type="site_completed", source_id=site.id,

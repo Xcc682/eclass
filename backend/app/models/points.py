@@ -1,3 +1,4 @@
+"""积分台账模型：不可变审计账本，保证积分发放幂等。"""
 import uuid
 from datetime import datetime
 
