@@ -641,8 +641,13 @@ async def upload_document(
     job = KnowledgeIngestionJob(document_id=document.id, status="queued", progress=0)
     db.add(job)
     db.flush()
-    background_tasks.add_task(process_document, document.id, job.id)
-    return {"code": 0, "data": {"document": _document_payload(document), "job_id": job.id}}
+    payload = _document_payload(document)
+    document_id, job_id = document.id, job.id
+    # The parser opens its own session, so the new rows must be committed before
+    # the background task starts or it silently sees nothing to process.
+    db.commit()
+    background_tasks.add_task(process_document, document_id, job_id)
+    return {"code": 0, "data": {"document": payload, "job_id": job_id}}
 
 
 @router.get("/ingestion-jobs/{job_id}")
@@ -785,18 +790,21 @@ def reindex_document(doc_id: str, background_tasks: BackgroundTasks, _: User = D
     job = KnowledgeIngestionJob(document_id=document.id, status="queued", progress=0)
     db.add(job)
     db.flush()
+    document_id, job_id = document.id, job.id
+    # Same session-visibility constraint as the upload endpoint.
+    db.commit()
     background_tasks.add_task(
         process_document,
-        document.id,
-        job.id,
+        document_id,
+        job_id,
         final_status,
         failure_status,
         False,
     )
     _invalidate_answer_cache("document_reindexed")
     return {"code": 0, "data": {
-        "job_id": job.id,
-        "document_id": document.id,
+        "job_id": job_id,
+        "document_id": document_id,
         "document_status": previous_status,
     }}
 
