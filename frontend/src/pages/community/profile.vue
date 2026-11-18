@@ -90,7 +90,9 @@
 
     <div style="height: 40rpx"></div>
 
-    <div v-if="editing" class="profile__dialog" @click.self="editing=false"><section><h2>编辑个人资料</h2><label>昵称<input v-model="editForm.nickname" /></label><label>学校<input v-model="editForm.school" /></label><label>学院<input v-model="editForm.college" /></label><label>政治面貌<input v-model="editForm.political_status" /></label><footer><button @click="editing=false">取消</button><button class="primary" @click="saveProfile">保存</button></footer></section></div>
+    <Teleport to="body">
+      <div v-if="editing" class="profile__dialog" @click.self="editing=false"><section><h2>编辑个人资料</h2><label>昵称<input v-model="editForm.nickname" /></label><label>学校<input v-model="editForm.school" /></label><label>学院<input v-model="editForm.college" /></label><label>政治面貌<input v-model="editForm.political_status" /></label><footer><button @click="editing=false">取消</button><button class="primary" @click="saveProfile">保存</button></footer></section></div>
+    </Teleport>
   </div>
 </template>
 
@@ -157,10 +159,10 @@ function handleLogout() {
   font-size: 36rpx; font-weight: 700; color: #FFFFFF; margin-bottom: 4rpx; }
 .profile__school { font-size: 24rpx; color: rgba(255,255,255,0.8); margin-bottom: 12rpx; }
 .profile__political-text { display: inline-block; background: rgba(255,255,255,0.2); color: #FFFFFF; font-size: 22rpx; padding: 6rpx 24rpx; border-radius: 4px; }
-.profile__edit{margin-top:16rpx;padding:10rpx 24rpx;border:1rpx solid rgba(255,255,255,.5);border-radius:999rpx;color:#fff}.profile__menu-text small{float:right;color:#9b8e8e;font-weight:400}.profile__dialog{position:fixed;inset:0;z-index:2200;background:rgba(30,20,16,.52);display:flex;align-items:flex-end}.profile__dialog section{width:100%;box-sizing:border-box;padding:36rpx;background:#fffdf8;border-radius:28rpx 28rpx 0 0}.profile__dialog h2{font-family:STKaiti,serif}.profile__dialog label{display:block;margin:18rpx 0;font-size:23rpx}.profile__dialog input{margin-top:8rpx}.profile__dialog footer{display:flex;gap:14rpx;margin-top:26rpx}.profile__dialog footer button{flex:1;padding:20rpx;border:1rpx solid #ddd0bf;border-radius:14rpx}.profile__dialog footer .primary{background:#8b1a1a;color:#fff}
+.profile__edit{margin-top:16rpx;padding:10rpx 24rpx;border:1rpx solid rgba(255,255,255,.5);border-radius:999rpx;color:#fff}.profile__menu-text small{float:right;color:#9b8e8e;font-weight:400}.profile__dialog{position:fixed;inset:0;z-index:2200;background:rgba(30,20,16,.52);display:flex;align-items:flex-end}.profile__dialog section{width:100%;box-sizing:border-box;max-height:92vh;max-height:calc(100dvh - 24rpx);overflow-y:auto;padding:36rpx;padding-bottom:calc(36rpx + env(safe-area-inset-bottom));background:#fffdf8;border-radius:28rpx 28rpx 0 0}.profile__dialog h2{font-family:STKaiti,serif}.profile__dialog label{display:block;margin:18rpx 0;font-size:23rpx}.profile__dialog input{margin-top:8rpx}.profile__dialog footer{display:flex;gap:14rpx;margin-top:26rpx}.profile__dialog footer button{flex:1;padding:20rpx;border:1rpx solid #ddd0bf;border-radius:14rpx}.profile__dialog footer .primary{background:#8b1a1a;color:#fff}
 
 /* Stats */
-.profile__stats { display: flex; margin: -20rpx 32rpx 24rpx; background: var(--color-card);
+.profile__stats { position: relative; z-index: 2; display: flex; margin: -20rpx 32rpx 24rpx; background: var(--color-card);
   border-left: 3px solid var(--color-primary-light); border-radius: 4px; padding: 24rpx; box-shadow: 0 4rpx 16rpx rgba(0,0,0,0.08); }
 .profile__stat { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4rpx; }
 .profile__stat-value { font-family: 'STKaiti', 'Noto Serif SC', serif;
@@ -200,6 +202,8 @@ function handleLogout() {
 @media (min-width: 769px){.profile{display:grid;grid-template-columns:360px minmax(0,1fr);grid-template-rows:auto auto auto auto;align-content:start;gap:20px;padding:32px;box-sizing:border-box}.profile__header{grid-column:1;grid-row:1/5;min-height:520px;box-sizing:border-box;justify-content:center}.profile__folio{position:absolute;left:28px;right:28px;top:28px;width:auto}.profile__stats{grid-column:2;grid-row:1;margin:0;padding:22px}.profile__menu{grid-column:2;grid-row:2;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin:0}.profile__menu-item:nth-child(odd){border-right:1px solid var(--color-border)}.profile__yiban{grid-column:2;grid-row:3;margin:0}.profile__logout{grid-column:2;grid-row:4;margin:0}.profile__dialog{align-items:center;justify-content:center}.profile__dialog section{width:min(560px,calc(100vw - 48px));border-radius:4px}}
 /* #endif */
 /* #ifdef H5 */
-@container (min-width: 769px){.profile{display:grid;grid-template-columns:360px minmax(0,1fr);grid-template-rows:auto auto auto auto;align-content:start;gap:20px;padding:32px;box-sizing:border-box}.profile__header{grid-column:1;grid-row:1/5;min-height:520px;box-sizing:border-box;justify-content:center}.profile__folio{position:absolute;left:28px;right:28px;top:28px;width:auto}.profile__stats{grid-column:2;grid-row:1;margin:0;padding:22px}.profile__menu{grid-column:2;grid-row:2;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin:0}.profile__menu-item:nth-child(odd){border-right:1px solid var(--color-border)}.profile__yiban{grid-column:2;grid-row:3;margin:0}.profile__logout{grid-column:2;grid-row:4;margin:0}.profile__dialog{align-items:center;justify-content:center}.profile__dialog section{width:min(560px,calc(100vw - 48px));border-radius:4px}}
+@container (min-width: 769px){.profile{display:grid;grid-template-columns:360px minmax(0,1fr);grid-template-rows:auto auto auto auto;align-content:start;gap:20px;padding:32px;box-sizing:border-box}.profile__header{grid-column:1;grid-row:1/5;min-height:520px;box-sizing:border-box;justify-content:center}.profile__folio{position:absolute;left:28px;right:28px;top:28px;width:auto}.profile__stats{grid-column:2;grid-row:1;margin:0;padding:22px}.profile__menu{grid-column:2;grid-row:2;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));margin:0}.profile__menu-item:nth-child(odd){border-right:1px solid var(--color-border)}.profile__yiban{grid-column:2;grid-row:3;margin:0}.profile__logout{grid-column:2;grid-row:4;margin:0}}
+/* The dialog is teleported to <body>, outside .app-frame's container, so it responds to the viewport. */
+@media (min-width: 769px){.profile__dialog{align-items:center;justify-content:center;padding:24px}.profile__dialog section{width:min(560px,calc(100vw - 48px));border-radius:4px;max-height:calc(100vh - 48px)}}
 /* #endif */
 </style>
