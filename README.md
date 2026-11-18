@@ -2,6 +2,18 @@
 
 > 全国计算机应用能力与数字素养大赛 · 第九届传智杯 AIWEB 网页开发挑战赛参赛作品
 
+[![后端质量检查](https://github.com/Xcc682/eclass/actions/workflows/ci.yml/badge.svg)](https://github.com/Xcc682/eclass/actions/workflows/ci.yml)
+[![仓库](https://img.shields.io/badge/GitHub-Xcc682%2Feclass-181717?logo=github)](https://github.com/Xcc682/eclass)
+[![在线演示](https://img.shields.io/badge/在线演示-121.41.231.233%3A5667-brightgreen)](http://121.41.231.233:5667/)
+
+**仓库地址：** <https://github.com/Xcc682/eclass> （公开仓库，可直接克隆）
+
+```bash
+git clone https://github.com/Xcc682/eclass.git
+```
+
+**在线演示：** <http://121.41.231.233:5667/> —— 用浏览器打开即可体验全部六大模块，首次使用以手机号与密码注册后登录（无需短信验证）。
+
 ---
 
 ## 📋 项目简介
