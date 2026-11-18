@@ -52,7 +52,7 @@
 import { computed, ref } from 'vue'
 import { onLoad } from '@dcloudio/uni-app'
 import { tourApi } from '@/api/tour'
-import tourHero from '@/static/images/scenes/tour-expedition-hero.png'
+import tourHero from '@/static/images/scenes/tour-expedition-hero.jpg'
 
 const siteName = ref('红色景点')
 const siteId = ref('1')

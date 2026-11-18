@@ -30,7 +30,7 @@ INCLUDE_FILES = [
 EXCLUDE_DIR_NAMES = {
     "node_modules", "dist", "__pycache__", ".git", "_backup", ".ruff_cache",
     ".mypy_cache", ".pytest_cache", "backups", ".claude", ".playwright-cli",
-    ".vscode", ".venv", "venv", "build",
+    ".vscode", ".venv", "venv", "build", "storage",
 }
 EXCLUDE_FILE_SUFFIXES = {".pyc", ".pyo", ".log", ".db", ".zip", ".pid"}
 EXCLUDE_FILE_NAMES = {
@@ -73,7 +73,9 @@ def collect() -> list[Path]:
         "思政情景工坊_作品介绍文档.docx",
         "思政情景工坊_作品介绍文档.pdf",
         "评测报告_检索.md",
+        "评测报告_检索_口语化.md",
         "eval_retrieval.json",
+        "eval_paraphrase.json",
     ):
         path = ROOT / "output" / pattern
         if path.is_file():

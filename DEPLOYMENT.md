@@ -61,10 +61,10 @@ docker compose -f docker-compose.production.yml up -d --build
 
 ```bash
 # nginx 实际在连哪个 IP
-docker compose -f docker-compose.quick.yml logs --tail=20 frontend | grep 'upstream'
+docker compose -f docker-compose.production.yml logs --tail=20 frontend | grep 'upstream'
 
 # Docker DNS 现在解析到哪个 IP
-docker compose -f docker-compose.quick.yml exec frontend getent hosts backend
+docker compose -f docker-compose.production.yml exec frontend getent hosts backend
 ```
 
 两个 IP 不一致即确诊。原因是 `proxy_pass http://backend:8000;` 这种写法只在

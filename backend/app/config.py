@@ -52,7 +52,7 @@ class Settings(BaseSettings):
     RETRIEVAL_MULTI_QUERY_ENABLED: bool = True
     RETRIEVAL_MULTI_QUERY_COUNT: int = 2
     RETRIEVAL_EXPAND_TIMEOUT_SECONDS: float = 5.0
-    # 列表重排在自建评测集上只有 ±1 题的波动且每次多 1 到 2 秒，默认关闭按需开启
+    # 列表重排每次问答多 1 到 2 秒；默认走融合顺序以获得更低延迟，按需开启
     RETRIEVAL_RERANK_ENABLED: bool = False
     RETRIEVAL_RERANK_TIMEOUT_SECONDS: float = 6.0
     RETRIEVAL_ORIGINAL_QUERY_WEIGHT: float = 2.0

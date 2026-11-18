@@ -443,6 +443,7 @@ def _message_payload(item: KnowledgeMessage) -> dict:
         "response_kind": answer_data.get("response_kind", default_kind),
         "selected_tool": answer_data.get("selected_tool"),
         "degraded": bool(answer_data.get("degraded", False)),
+        "images": answer_data.get("images", []) if item.role == "user" else [],
         "submission_id": item.submission_id, "status": item.status or "sent", "error": item.error,
         "feedback": item.feedback, "created_at": item.created_at.isoformat(),
     }
@@ -986,6 +987,8 @@ async def ask_knowledge(data: AskRequest, user: User = Depends(get_ai_user), db:
     user_message.content = data.question
     user_message.status = "pending"
     user_message.error = None
+    # 随消息落库，重新打开历史会话时仍能回显用户当时发送的图片。
+    user_message.answer_json = json.dumps({"images": images} if images else {}, ensure_ascii=False)
     if not existing_user:
         db.add(user_message)
     session.updated_at = datetime.utcnow()

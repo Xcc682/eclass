@@ -1,0 +1,736 @@
+{
+  "k": 6,
+  "items": [
+    {
+      "id": "p01",
+      "question": "咱们党到底是个什么样的组织？",
+      "mode": "baseline",
+      "recall@1": 0.0,
+      "recall@6": 0.0,
+      "mrr@6": 0.0,
+      "top": [],
+      "trace": {}
+    },
+    {
+      "id": "p02",
+      "question": "共产党最后要奔着什么目标去？",
+      "mode": "baseline",
+      "recall@1": 0.0,
+      "recall@6": 0.0,
+      "mrr@6": 0.0,
+      "top": [],
+      "trace": {}
+    },
+    {
+      "id": "p03",
+      "question": "红船精神讲的都是些啥？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "红船精神学习资料"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "p04",
+      "question": "二十大开会时定下的主题是啥？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "党的二十大报告学习要点",
+        "中共中央关于进一步全面深化改革"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "p05",
+      "question": "入党宣誓时要念的那段话是什么？",
+      "mode": "baseline",
+      "recall@1": 0.0,
+      "recall@6": 1.0,
+      "mrr@6": 0.25,
+      "top": [
+        "中国共产党发展党员工作细则",
+        "中国共产党发展党员工作细则",
+        "中国共产党党徽党旗条例"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "p06",
+      "question": "预备党员要熬多久才能转正？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党发展党员工作细则",
+        "中国共产党发展党员工作细则",
+        "中国共产党党章（2022年修改）(1)"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "p07",
+      "question": "大学生想入党，大致要走哪几步？",
+      "mode": "baseline",
+      "recall@1": 0.0,
+      "recall@6": 0.0,
+      "mrr@6": 0.0,
+      "top": [
+        "中国共产党支部工作条例"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "p08",
+      "question": "成为党员以后能享受哪些权利？",
+      "mode": "baseline",
+      "recall@1": 0.0,
+      "recall@6": 0.0,
+      "mrr@6": 0.0,
+      "top": [
+        "中国共产党党纲",
+        "中国共产党党纲",
+        "中国共产党支部工作条例"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "p09",
+      "question": "党员平时得尽哪些义务？",
+      "mode": "baseline",
+      "recall@1": 0.0,
+      "recall@6": 0.0,
+      "mrr@6": 0.0,
+      "top": [],
+      "trace": {}
+    },
+    {
+      "id": "p10",
+      "question": "党内处分一共有哪几档？",
+      "mode": "baseline",
+      "recall@1": 0.0,
+      "recall@6": 0.0,
+      "mrr@6": 0.0,
+      "top": [],
+      "trace": {}
+    },
+    {
+      "id": "p11",
+      "question": "党内监督主要盯着哪些人？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党内监督条例",
+        "中国共产党党内监督条例",
+        "中国共产党党内监督条例"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "p12",
+      "question": "支部平时都要干哪些活？",
+      "mode": "baseline",
+      "recall@1": 0.0,
+      "recall@6": 0.0,
+      "mrr@6": 0.0,
+      "top": [],
+      "trace": {}
+    },
+    {
+      "id": "p13",
+      "question": "基层党组织换届是怎么选的？",
+      "mode": "baseline",
+      "recall@1": 0.0,
+      "recall@6": 1.0,
+      "mrr@6": 0.5,
+      "top": [
+        "中国共产党党员教育管理工作条例",
+        "中国共产党基层组织选举工作条例",
+        "中国共产党党员教育管理工作条例"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "p14",
+      "question": "领导干部在廉洁方面要守哪些规矩？",
+      "mode": "baseline",
+      "recall@1": 0.0,
+      "recall@6": 0.0,
+      "mrr@6": 0.0,
+      "top": [
+        "中国共产党重大事项请示报告条例",
+        "中国共产党党内监督条例",
+        "中国共产党党内监督条例"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "p15",
+      "question": "有大事要报告，按什么原则办？",
+      "mode": "baseline",
+      "recall@1": 0.0,
+      "recall@6": 0.0,
+      "mrr@6": 0.0,
+      "top": [],
+      "trace": {}
+    },
+    {
+      "id": "p16",
+      "question": "党这一百年奋斗下来有什么历史意义？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中共中央关于党的百年奋斗重大成就和历史经验的决议",
+        "中共中央关于党的百年奋斗重大成就和历史经验的决议",
+        "中共中央关于党的百年奋斗重大成就和历史经验的决议"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "p17",
+      "question": "多大年龄才能申请入党？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党章程"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "p18",
+      "question": "党员平时的组织生活都有哪些形式？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党支部工作条例",
+        "中国共产党支部工作条例",
+        "中国共产党党员教育管理工作条例"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "p19",
+      "question": "民主集中制到底是什么意思？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党党内监督条例",
+        "中国共产党章程"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "p20",
+      "question": "党的群众路线讲的是什么？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党章（2022年修改）(1)",
+        "中共中央关于党的百年奋斗重大成就和历史经验的决议",
+        "中共中央关于党的百年奋斗重大成就和历史经验的决议"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "p21",
+      "question": "巡视是为了什么、怎么巡？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党内监督条例"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "p22",
+      "question": "党员教育管理主要想达到什么目的？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党员教育管理工作条例",
+        "中国共产党党员教育管理工作条例",
+        "中国共产党党员教育管理工作条例"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "p23",
+      "question": "党的全国代表大会几年开一次？",
+      "mode": "baseline",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党章程",
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党章程"
+      ],
+      "trace": {}
+    },
+    {
+      "id": "p01",
+      "question": "咱们党到底是个什么样的组织？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党徽党旗条例",
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党章程（节选）"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "p02",
+      "question": "共产党最后要奔着什么目标去？",
+      "mode": "enhanced",
+      "recall@1": 0.0,
+      "recall@6": 0.0,
+      "mrr@6": 0.0,
+      "top": [],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "p03",
+      "question": "红船精神讲的都是些啥？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "红船精神学习资料"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "p04",
+      "question": "二十大开会时定下的主题是啥？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "党的二十大报告学习要点",
+        "中共中央关于进一步全面深化改革",
+        "中国共产党党内监督条例"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "p05",
+      "question": "入党宣誓时要念的那段话是什么？",
+      "mode": "enhanced",
+      "recall@1": 0.0,
+      "recall@6": 1.0,
+      "mrr@6": 0.25,
+      "top": [
+        "中国共产党发展党员工作细则",
+        "中国共产党发展党员工作细则",
+        "中国共产党党徽党旗条例"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "p06",
+      "question": "预备党员要熬多久才能转正？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党发展党员工作细则",
+        "中国共产党发展党员工作细则",
+        "中国共产党党章（2022年修改）(1)"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "p07",
+      "question": "大学生想入党，大致要走哪几步？",
+      "mode": "enhanced",
+      "recall@1": 0.0,
+      "recall@6": 0.0,
+      "mrr@6": 0.0,
+      "top": [
+        "中国共产党支部工作条例"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "p08",
+      "question": "成为党员以后能享受哪些权利？",
+      "mode": "enhanced",
+      "recall@1": 0.0,
+      "recall@6": 0.0,
+      "mrr@6": 0.0,
+      "top": [
+        "中国共产党党纲",
+        "中国共产党党纲",
+        "中国共产党支部工作条例"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "p09",
+      "question": "党员平时得尽哪些义务？",
+      "mode": "enhanced",
+      "recall@1": 0.0,
+      "recall@6": 0.0,
+      "mrr@6": 0.0,
+      "top": [
+        "中国共产党党员教育管理工作条例",
+        "中国共产党党员教育管理工作条例",
+        "中国共产党党员教育管理工作条例"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "p10",
+      "question": "党内处分一共有哪几档？",
+      "mode": "enhanced",
+      "recall@1": 0.0,
+      "recall@6": 0.0,
+      "mrr@6": 0.0,
+      "top": [],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "p11",
+      "question": "党内监督主要盯着哪些人？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党内监督条例",
+        "中国共产党党内监督条例",
+        "中共中央关于党的百年奋斗重大成就和历史经验的决议"
+      ],
+      "trace": {
+        "queries": 2,
+        "expanded": 1,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "p12",
+      "question": "支部平时都要干哪些活？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党支部工作条例",
+        "中国共产党支部工作条例",
+        "中国共产党重大事项请示报告条例"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "p13",
+      "question": "基层党组织换届是怎么选的？",
+      "mode": "enhanced",
+      "recall@1": 0.0,
+      "recall@6": 1.0,
+      "mrr@6": 0.5,
+      "top": [
+        "中国共产党党员教育管理工作条例",
+        "中国共产党基层组织选举工作条例",
+        "中国共产党党员教育管理工作条例"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "p14",
+      "question": "领导干部在廉洁方面要守哪些规矩？",
+      "mode": "enhanced",
+      "recall@1": 0.0,
+      "recall@6": 0.0,
+      "mrr@6": 0.0,
+      "top": [
+        "中国共产党重大事项请示报告条例",
+        "中国共产党党内监督条例",
+        "中国共产党重大事项请示报告条例"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "p15",
+      "question": "有大事要报告，按什么原则办？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党重大事项请示报告条例",
+        "中国共产党重大事项请示报告条例",
+        "中国共产党重大事项请示报告条例"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "p16",
+      "question": "党这一百年奋斗下来有什么历史意义？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党党章（2022年修改）(1)",
+        "中共中央关于党的百年奋斗重大成就和历史经验的决议"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "p17",
+      "question": "多大年龄才能申请入党？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党章程",
+        "中国共产党发展党员工作细则"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "p18",
+      "question": "党员平时的组织生活都有哪些形式？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党支部工作条例",
+        "中国共产党支部工作条例",
+        "中国共产党党员教育管理工作条例"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "p19",
+      "question": "民主集中制到底是什么意思？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党党内监督条例",
+        "中国共产党章程"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "p20",
+      "question": "党的群众路线讲的是什么？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党章（2022年修改）(1)",
+        "中共中央关于党的百年奋斗重大成就和历史经验的决议",
+        "中共中央关于党的百年奋斗重大成就和历史经验的决议"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "p21",
+      "question": "巡视是为了什么、怎么巡？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党内监督条例",
+        "中共中央关于党的百年奋斗重大成就和历史经验的决议"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "p22",
+      "question": "党员教育管理主要想达到什么目的？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党党员教育管理工作条例",
+        "中国共产党党员教育管理工作条例",
+        "中国共产党党员教育管理工作条例"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    },
+    {
+      "id": "p23",
+      "question": "党的全国代表大会几年开一次？",
+      "mode": "enhanced",
+      "recall@1": 1.0,
+      "recall@6": 1.0,
+      "mrr@6": 1.0,
+      "top": [
+        "中国共产党章程",
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党章程"
+      ],
+      "trace": {
+        "queries": 3,
+        "expanded": 2,
+        "reranked": false,
+        "degraded": false
+      }
+    }
+  ],
+  "summary": {
+    "baseline": {
+      "recall@1": 0.5217,
+      "recall@6": 0.6087,
+      "mrr@6": 0.5543,
+      "items": 23
+    },
+    "enhanced": {
+      "recall@1": 0.6522,
+      "recall@6": 0.7391,
+      "mrr@6": 0.6848,
+      "items": 23
+    }
+  },
+  "unavailable": [
+    "p24"
+  ]
+}

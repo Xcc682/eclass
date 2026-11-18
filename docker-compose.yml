@@ -1,3 +1,5 @@
+name: eclass
+
 services:
   backend:
     # 本机 FastAPI + SQLite 是默认开发方式。仅在明确验证完整容器部署时，

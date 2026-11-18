@@ -5,12 +5,14 @@
   - 其余    提供 dist/build/h5 下的生产构建静态文件
 """
 import http.server
+import os
 import socketserver
 import urllib.request
 import urllib.error
+from pathlib import Path
 
-BACKEND = "http://127.0.0.1:8000"
-DIST_DIR = "F:/eclass/frontend/dist/build/h5"
+BACKEND = os.environ.get("BACKEND", "http://127.0.0.1:8000")
+DIST_DIR = os.environ.get("DIST_DIR", str(Path(__file__).resolve().parent / "dist" / "build" / "h5"))
 PORT = 5667
 
 

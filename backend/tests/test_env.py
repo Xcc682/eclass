@@ -31,3 +31,5 @@ def configure_test_environment() -> None:
     os.environ["GROUNDING_CHECK_ENABLED"] = "false"
     os.environ["COMMUNITY_STORAGE_DIR"] = community_storage.as_posix()
     os.environ.setdefault("JWT_SECRET_KEY", "test-only-secret-key-with-at-least-32-characters")
+    # 洁净环境（无 backend/.env）下网关测试仍需一个占位 key 才能进入 mock 分支。
+    os.environ.setdefault("LLM_API_KEY", "test-only-key")

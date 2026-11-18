@@ -383,8 +383,8 @@
         "中共中央关于进一步全面深化改革"
       ],
       "trace": {
-        "queries": 2,
-        "expanded": 1,
+        "queries": 3,
+        "expanded": 2,
         "reranked": false,
         "degraded": false
       }
@@ -455,8 +455,8 @@
         "中国共产党章程"
       ],
       "trace": {
-        "queries": 2,
-        "expanded": 1,
+        "queries": 3,
+        "expanded": 2,
         "reranked": false,
         "degraded": false
       }
@@ -512,8 +512,8 @@
         "中国共产党党内监督条例"
       ],
       "trace": {
-        "queries": 3,
-        "expanded": 2,
+        "queries": 2,
+        "expanded": 1,
         "reranked": false,
         "degraded": false
       }
@@ -621,13 +621,13 @@
       "recall@6": 1.0,
       "mrr@6": 0.333,
       "top": [
-        "中国共产党党员教育管理工作条例",
         "中国共产党党徽党旗条例",
+        "中国共产党党员教育管理工作条例",
         "中国共产党党章（2022年修改）(1)"
       ],
       "trace": {
-        "queries": 3,
-        "expanded": 2,
+        "queries": 2,
+        "expanded": 1,
         "reranked": false,
         "degraded": false
       }
@@ -736,8 +736,8 @@
       "mrr@6": 1.0,
       "top": [
         "中国共产党章程",
-        "中国共产党章程",
-        "中国共产党党章（2022年修改）(1)"
+        "中国共产党党章（2022年修改）(1)",
+        "中国共产党章程"
       ],
       "trace": {
         "queries": 2,

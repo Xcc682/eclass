@@ -1,5 +1,8 @@
 """Idempotent development seed data used by both SQLite and PostgreSQL."""
+import hashlib
 import json
+import logging
+from pathlib import Path
 
 from sqlalchemy import select
 
@@ -9,7 +12,10 @@ from app.models.debate import DebateTopic
 from app.models.domain import TeacherTask, TourSite
 from app.models.history import HistoryScenario
 from app.models.interview import InterviewScenario
-from app.models.knowledge import KnowledgeDocument, KnowledgeTemplate
+from app.models.knowledge import KnowledgeChunk, KnowledgeDocument, KnowledgeTemplate
+
+logger = logging.getLogger(__name__)
+CORPUS_PATH = Path(__file__).with_name("seed_data") / "knowledge_docs.json"
 
 INTERVIEWS = [
     ("1", "入党积极分子谈话", "模拟党组织与入党积极分子的首次正式谈话", "beginner", 15, "张老师", "院党委组织委员"),
@@ -47,6 +53,62 @@ TOURS = [
 ]
 
 
+def _seed_knowledge_corpus(db) -> None:
+    """为全新数据库补入完整权威资料并建立分块与全文索引。
+
+    语料文件由演示环境导出、随仓库分发；已存在同名资料时跳过，可重复执行。
+    """
+    if not CORPUS_PATH.is_file():
+        return
+    try:
+        items = json.loads(CORPUS_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        logger.warning("knowledge seed corpus unreadable path=%s", CORPUS_PATH, exc_info=True)
+        return
+    if not isinstance(items, list):
+        return
+
+    from app.services.knowledge_service import chunk_text, sync_fts
+
+    existing = {title for (title,) in db.execute(select(KnowledgeDocument.title)).all()}
+    added = 0
+    for item in items:
+        title = str(item.get("title") or "").strip()
+        content = str(item.get("content") or "")
+        if not title or not content or title in existing:
+            continue
+        document = KnowledgeDocument(
+            title=title,
+            category=item.get("category") or "党史",
+            content=content,
+            summary=item.get("summary") or "",
+            source=item.get("source") or "",
+            status="published",
+        )
+        db.add(document)
+        db.flush()
+        parts = chunk_text(content)
+        chunks = [
+            KnowledgeChunk(
+                document_id=document.id,
+                chunk_index=index,
+                content=part,
+                char_count=len(part),
+                content_hash=hashlib.sha256(part.encode("utf-8")).hexdigest(),
+            )
+            for index, part in enumerate(parts)
+        ]
+        db.add_all(chunks)
+        document.chunk_count = len(chunks)
+        db.flush()
+        db.commit()
+        sync_fts(document.id, chunks)
+        existing.add(title)
+        added += 1
+    if added:
+        logger.info("knowledge corpus seeded documents=%s", added)
+
+
 def seed_data() -> None:
     db = SessionLocal()
     try:
@@ -82,6 +144,18 @@ def seed_data() -> None:
                 ("1", "理想信念比物质利益更能激励青年成长", "理想信念", "intermediate"),
                 ("2", "人工智能的发展更有利于社会公平", "社会热点", "advanced"),
                 ("3", "青年应该先立足本职还是先追求理想", "价值选择", "beginner"),
+                ("4", "当代青年实现人生价值，更应着眼于个人奋斗还是时代机遇", "理想信念", "intermediate"),
+                ("5", "人工智能的发展，是否将加剧社会治理的公平性危机", "社会热点", "intermediate"),
+                ("6", "党史教育中，英雄人物的完美化塑造是否更有利于青年信仰传承", "党史辨析", "intermediate"),
+                ("7", "理想主义对当代青年成长利大于弊还是弊大于利", "理想信念", "intermediate"),
+                ("8", "在全球化背景下，爱国主义教育是否应更强调普世价值", "社会热点", "intermediate"),
+                ("9", "中国共产党在抗日民族统一战线中的领导地位是历史选择还是策略结果", "党史辨析", "advanced"),
+                ("10", "理想信念主要源于个人实践还是社会环境的塑造", "理想信念", "intermediate"),
+                ("11", "面对社会热点问题，个人更应该坚持理性分析还是情感共鸣先行", "社会热点", "intermediate"),
+                ("12", "在党史辨析中，历史人物的功过是否应当以当代价值观为标准来评价", "党史辨析", "intermediate"),
+                ("13", "当代青年更应该追求理想的纯粹还是现实的适配", "理想信念", "intermediate"),
+                ("14", "网络曝光对失德行为的监督作用是否大于其负面影响", "社会热点", "intermediate"),
+                ("15", "历史评价应当以成功结果论英雄还是以过程动机论得失", "党史辨析", "advanced"),
             ]
             for topic in topics:
                 db.add(DebateTopic(id=topic[0], title=topic[1], category=topic[2], difficulty=topic[3]))
@@ -109,5 +183,6 @@ def seed_data() -> None:
         db.flush()
         seed_immersive(db)
         db.commit()
+        _seed_knowledge_corpus(db)
     finally:
         db.close()
