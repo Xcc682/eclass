@@ -1,12 +1,19 @@
 # Linux 服务器部署（IP 直连方式）
 
+项目源码托管在公开仓库：<https://github.com/Xcc682/eclass>
+
+```bash
+git clone https://github.com/Xcc682/eclass.git
+cd eclass
+```
+
 项目根目录保留 `docker-compose.yml` 用于本地开发；在 Linux 服务器上部署时使用
 独立的 `docker-compose.production.yml`。
 
 ## 首次部署
 
 1. 安装 Docker Engine 与 Docker Compose 插件。
-2. 将项目复制到服务器并进入项目目录。
+2. 将项目复制到服务器并进入项目目录（或直接使用上面的克隆命令）。
 3. 创建生产环境变量文件：
 
    ```bash
