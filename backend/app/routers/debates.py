@@ -149,12 +149,14 @@ def _normalize_coach(value) -> dict[str, str]:
 
 
 def _message_payload(message: DebateMessage) -> dict:
+    analysis = _json(message.analysis_json, {})
     return {
         "id": message.id, "role": message.role, "content": message.content,
         "stage": message.stage, "round": message.round_number,
-        "analysis": _json(message.analysis_json, {}), "evidence": _json(message.evidence_json, []),
+        "analysis": analysis, "evidence": _json(message.evidence_json, []),
         "submission_id": message.submission_id, "delivery_status": message.delivery_status,
         "created_at": message.created_at.isoformat() if message.created_at else None,
+        "images": analysis.get("images", []) if message.role == "user" else [],
     }
 
 
@@ -372,6 +374,10 @@ async def submit_argument(session_id: str, data: ArgumentRequest, user: User = D
             evidence_json=json.dumps(citations, ensure_ascii=False),
         )
         db.add(user_message)
+    # 图片随陈词落库，重新打开会话时仍能回显用户当时发送的图片。
+    analysis = _json(user_message.analysis_json, {})
+    analysis["images"] = images or []
+    user_message.analysis_json = json.dumps(analysis, ensure_ascii=False)
     try:
         db.commit()
     except IntegrityError:
@@ -411,6 +417,7 @@ async def submit_argument(session_id: str, data: ArgumentRequest, user: User = D
     user_message.analysis_json = json.dumps({
         "step": step["key"], "step_label": step["label"],
         "coach_feedback": coach, "argument_map": argument_map,
+        "images": images or [],
     }, ensure_ascii=False)
     next_index = completed + 1
     finished = next_index >= len(steps)

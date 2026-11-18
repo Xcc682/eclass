@@ -28,6 +28,8 @@ from app.services.ai_service import (
 
 
 class ApiAcceptanceTests(unittest.TestCase):
+    TINY_PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+
     @classmethod
     def setUpClass(cls):
         cls.client_context = TestClient(app)
@@ -141,15 +143,20 @@ class ApiAcceptanceTests(unittest.TestCase):
             self.assertEqual(early_end.status_code, 400)
             for index, answer in enumerate(("我是一名大学生", "我希望为同学服务", "我重视理论学习", "我会结合实践理解", "我会辨析信息来源", "我会坚持原则并沟通")):
                 submission_id = f"interview-turn-{index + 1}"
-                response = self.client.post(f"/api/v1/interviews/practice/{practice_id}/respond", headers=headers, json={"content": answer, "submission_id": submission_id})
+                payload = {"content": answer, "submission_id": submission_id}
+                if index == 0:
+                    # 1x1 PNG：图片必须随消息落库并在重新拉取会话时回显。
+                    payload["images"] = [self.TINY_PNG]
+                response = self.client.post(f"/api/v1/interviews/practice/{practice_id}/respond", headers=headers, json=payload)
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response.json()["data"]["answered_count"], index + 1)
                 self.assertEqual(response.json()["data"]["user_message"]["round_number"], index + 1)
                 self.assertEqual(response.json()["data"]["ai_message"]["round_number"], index + 1)
                 if index == 0:
-                    duplicate = self.client.post(f"/api/v1/interviews/practice/{practice_id}/respond", headers=headers, json={"content": answer, "submission_id": submission_id})
+                    duplicate = self.client.post(f"/api/v1/interviews/practice/{practice_id}/respond", headers=headers, json=payload)
                     self.assertEqual(duplicate.status_code, 200)
                     self.assertEqual(duplicate.json()["data"]["user_message"]["id"], response.json()["data"]["user_message"]["id"])
+                    self.assertEqual(duplicate.json()["data"]["user_message"]["images"], [self.TINY_PNG])
                 phases.append(response.json()["data"]["phase"])
                 live_score = response.json()["data"]["live_evaluation"]["dimensions"]["表达逻辑"]["score"]
                 if index == 0:
@@ -157,6 +164,10 @@ class ApiAcceptanceTests(unittest.TestCase):
                 if index == 1:
                     self.assertEqual(live_score, 86)
             self.assertEqual(phases, ["自我认知", "入党动机", "理论考察", "理论考察", "情景假设", "情景假设"])
+            # 重新打开会话（历史记录）时，第一轮的图片仍要能回显。
+            reloaded = self.client.get(f"/api/v1/interviews/practice/{practice_id}", headers=headers)
+            first_user = next(m for m in reloaded.json()["data"]["messages"] if m["role"] == "user")
+            self.assertEqual(first_user["images"], [self.TINY_PNG])
             self.assertEqual(response.json()["data"]["status"], "awaiting_report")
             self.assertIsNone(response.json()["data"]["current_question_number"])
             self.assertEqual(response.json()["data"]["live_evaluation"]["dimensions"]["表达逻辑"]["score"], 86)
@@ -260,7 +271,10 @@ class ApiAcceptanceTests(unittest.TestCase):
         expected_steps = ["user_opening", "user_question", "user_counter_answer", "user_rebuttal", "user_defense", "user_closing"]
         with patch("app.routers.debates.ai_service.debate_argue", new=mock_turn):
             for index, step in enumerate(expected_steps):
-                response = self.client.post(f"/api/v1/debates/practice/{session_id}/argue", headers=headers, json={"argument": f"第{index + 1}步陈词", "submission_id": f"full-turn-{index + 1}"})
+                payload = {"argument": f"第{index + 1}步陈词", "submission_id": f"full-turn-{index + 1}"}
+                if index == 0:
+                    payload["images"] = [self.TINY_PNG]
+                response = self.client.post(f"/api/v1/debates/practice/{session_id}/argue", headers=headers, json=payload)
                 self.assertEqual(response.status_code, 200)
                 self.assertEqual(response.json()["data"]["step"], step)
         self.assertEqual(response.json()["data"]["next_stage"], "finished")
@@ -268,6 +282,10 @@ class ApiAcceptanceTests(unittest.TestCase):
         resumed = self.client.post("/api/v1/debates/practice/start", headers=headers, json={"topic_id": "1", "stance": "con", "mode": "full"})
         self.assertTrue(resumed.json()["data"]["resumed"])
         self.assertEqual(resumed.json()["data"]["status"], "awaiting_feedback")
+        # 重新拉取会话时，首步陈词附带的图片仍能回显。
+        reloaded = self.client.get(f"/api/v1/debates/practice/{session_id}", headers=headers)
+        first_user = next(m for m in reloaded.json()["data"]["messages"] if m["role"] == "user")
+        self.assertEqual(first_user["images"], [self.TINY_PNG])
         called_steps = [call.kwargs["step"] for call in mock_turn.await_args_list]
         self.assertEqual(called_steps, expected_steps)
 

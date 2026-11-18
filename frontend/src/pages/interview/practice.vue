@@ -33,7 +33,7 @@
     <scroll-view ref="messageScroller" class="practice__messages" scroll-y :scroll-into-view="scrollTarget" :show-scrollbar="false">
       <view class="practice__messages-inner">
         <view v-for="msg in messages" :id="`msg-${msg.id}`" :key="msg.id" class="turn">
-          <ChatBubble :role="msg.role" :content="msg.content" :name="msg.role==='ai'?roleName:'我'" />
+          <ChatBubble :role="msg.role" :content="msg.content" :name="msg.role==='ai'?roleName:'我'" :images="msg.images" />
           <view v-if="msg.role==='ai' && analysisOf(msg).comment" class="turn-note">
             <view class="turn-note__head"><text>本轮观察</text><i>{{ followUpLabel(analysisOf(msg).follow_up_type) }}</i></view>
             <text>{{ analysisOf(msg).comment }}</text>
@@ -117,10 +117,10 @@ async function submitMessage(content:string,message:InterviewMessage,images?:str
 function handleSend(content:string,images?:string[]){
   if(isThinking.value||status.value!=='in_progress'||!practiceId.value)return
   const submissionId=`sub-${Date.now()}-${Math.random().toString(36).slice(2,10)}`
-  const message:InterviewMessage={id:`local-${submissionId}`,role:'user',content,round_number:answeredCount.value+1,submission_id:submissionId,local_status:'pending'}
+  const message:InterviewMessage={id:`local-${submissionId}`,role:'user',content,round_number:answeredCount.value+1,submission_id:submissionId,local_status:'pending',images:images?.length?images.slice():undefined}
   messages.value.push(message);submitMessage(content,message,images)
 }
-function retryMessage(message:InterviewMessage){if(!message.submission_id)message.submission_id=`sub-${Date.now()}-${Math.random().toString(36).slice(2,10)}`;submitMessage(message.content,message)}
+function retryMessage(message:InterviewMessage){if(!message.submission_id)message.submission_id=`sub-${Date.now()}-${Math.random().toString(36).slice(2,10)}`;submitMessage(message.content,message,message.images)}
 async function showHint(){
   if(!practiceId.value)return;uni.showLoading({title:'整理思路中…'})
   try{const data=await interviewApi.getHint(practiceId.value);uni.hideLoading();uni.showModal({title:'思考提示',content:data.hint,showCancel:false})}

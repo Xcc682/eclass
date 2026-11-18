@@ -29,6 +29,7 @@ export interface DebateMessage {
   round?: number; analysis?: Record<string, any>; evidence?: DebateEvidence[]
   local_status?: 'pending' | 'sent' | 'failed'; created_at?: string
   submission_id?: string; delivery_status?: 'pending' | 'sent' | 'failed'
+  images?: string[]
 }
 
 export interface DebateSession {
@@ -74,8 +75,8 @@ export const debateApi = {
   getPractice: (sessionId: string) => api.get<DebateSession>(`/debates/practice/${sessionId}`),
   searchEvidence: (sessionId: string, query: string) =>
     api.post<DebateEvidence[]>(`/debates/practice/${sessionId}/evidence/search`, { query }, { timeout: 30000, toast: false }),
-  submitArgument: (sessionId: string, argument: string, submission_id: string, evidence_refs: Array<{chunk_id:string}> = []) =>
-    api.post<DebateArgumentResponse>(`/debates/practice/${sessionId}/argue`, { argument, evidence_refs, submission_id }, { timeout: 65000, toast: false }),
+  submitArgument: (sessionId: string, argument: string, submission_id: string, evidence_refs: Array<{chunk_id:string}> = [], images: string[] = []) =>
+    api.post<DebateArgumentResponse>(`/debates/practice/${sessionId}/argue`, { argument, evidence_refs, submission_id, images }, { timeout: 65000, toast: false }),
   endDebate: (sessionId: string) =>
     api.post<DebateFeedback>(`/debates/practice/${sessionId}/end`, undefined, { timeout: 65000, toast: false }),
   getFeedback: (sessionId: string) => api.get<DebateFeedback>(`/debates/practice/${sessionId}/feedback`),

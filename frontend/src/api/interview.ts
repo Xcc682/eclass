@@ -39,6 +39,7 @@ export interface InterviewMessage {
   local_status?: 'pending' | 'sent' | 'failed'
   submission_id?: string
   delivery_status?: 'pending' | 'sent' | 'failed'
+  images?: string[]
 }
 
 export interface InterviewPractice {

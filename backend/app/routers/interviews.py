@@ -180,6 +180,7 @@ def _message_payload(message: InterviewMessage) -> dict:
         "analysis": analysis, "ai_analysis": analysis, "round_number": message.round_number,
         "submission_id": message.submission_id, "delivery_status": message.delivery_status,
         "created_at": message.created_at.isoformat() if message.created_at else None,
+        "images": analysis.get("images", []) if message.role == "user" else [],
     }
 
 
@@ -335,6 +336,8 @@ async def respond(practice_id: str, data: RespondRequest, user: User = Depends(g
             submission_id=data.submission_id, delivery_status="pending",
         )
         db.add(user_message)
+    # 图片随消息落库，重新打开历史会话时仍能回显用户当时发送的图片。
+    user_message.analysis_json = json.dumps({"images": images} if images else {}, ensure_ascii=False)
     try:
         db.commit()
     except IntegrityError:

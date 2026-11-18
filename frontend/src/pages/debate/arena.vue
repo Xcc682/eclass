@@ -63,6 +63,9 @@
               ><i>{{ stageLabels[message.stage] }}</i></view
             >
             <text class="speech__content">{{ message.content }}</text>
+            <view v-if="message.images?.length" class="speech__images"
+              ><img v-for="(image, index) in message.images" :key="index" :src="image" alt="已发送图片"
+            /></view>
             <view v-if="message.evidence?.length" class="speech__sources"
               ><text v-for="source in message.evidence" :key="source.chunk_id"
                 >《{{ source.document_title }}》</text
@@ -172,7 +175,13 @@
         ><text>{{ stepLabel }}</text
         ><span>{{ text.length }}/3000</span></view
       >
+      <view v-if="images.length" class="composer__images"
+        ><figure v-for="(image, index) in images" :key="index"
+          ><img :src="image" alt="待发送图片" /><button type="button" @click="images.splice(index, 1)">×</button></figure
+        ></view
+      >
       <view class="composer__row">
+        <button class="composer__attach" type="button" title="附上一张图片" :disabled="thinking || images.length >= 2" @click="pickImage">＋图</button>
         <textarea
           v-model="text"
           :placeholder="currentPlaceholder"
@@ -188,6 +197,7 @@
           >《{{ item.document_title }}》<i @click="toggleEvidence(item)">×</i></text
         ></view
       >
+      <input ref="fileEl" type="file" accept="image/png,image/jpeg,image/webp" hidden @change="onPickImages" />
     </view>
 
     <view
@@ -284,6 +294,8 @@ const displayStep = computed(() =>
 );
 const messages = ref<LocalMessage[]>([]),
   text = ref(""),
+  images = ref<string[]>([]),
+  fileEl = ref<HTMLInputElement | null>(null),
   thinking = ref(false),
   activeTab = ref("court"),
   scrollTarget = ref(""),
@@ -433,6 +445,7 @@ async function submitMessage(content: string, message: LocalMessage) {
       content,
       message.submission_id!,
       (message.evidence || []).map((item) => ({ chunk_id: item.chunk_id })),
+      message.images || [],
     );
     if (!alive.value) return;
     const index = messages.value.findIndex((item) => item.id === message.id);
@@ -493,6 +506,28 @@ async function submitMessage(content: string, message: LocalMessage) {
     }
   }
 }
+function pickImage() {
+  fileEl.value?.click();
+}
+function onPickImages(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file || images.value.length >= 2) return;
+  if (!/^image\/(png|jpeg|webp)$/.test(file.type)) {
+    uni.showToast({ title: "仅支持 PNG/JPEG/WebP 图片", icon: "none" });
+    return;
+  }
+  if (file.size > 4 * 1024 * 1024) {
+    uni.showToast({ title: "图片不得超过 4MB", icon: "none" });
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = () => {
+    if (typeof reader.result === "string") images.value.push(reader.result);
+  };
+  reader.readAsDataURL(file);
+}
 function send() {
   const content = text.value.trim();
   if (!content || !canSend.value) return;
@@ -507,7 +542,9 @@ function send() {
     submission_id: submissionId,
     local_status: "pending",
     evidence: [...selectedEvidence.value],
+    images: images.value.length ? images.value.slice() : undefined,
   };
+  images.value = [];
   messages.value.push(message);
   submitMessage(content, message);
 }
@@ -787,6 +824,60 @@ function toggleEvidence(item: DebateEvidence) {
   border-color: #4a1917;
   border-left-color: #e7c981;
   color: #fff9ed;
+}
+.speech__images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
+  margin-top: 10rpx;
+}
+.speech__images img {
+  display: block;
+  width: 180rpx;
+  height: 180rpx;
+  object-fit: cover;
+  border-radius: 4rpx;
+  border: 1px solid rgba(72, 25, 22, 0.15);
+}
+.composer__images {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8rpx;
+  margin-bottom: 8rpx;
+}
+.composer__images figure {
+  position: relative;
+  margin: 0;
+}
+.composer__images img {
+  display: block;
+  width: 110rpx;
+  height: 110rpx;
+  object-fit: cover;
+  border-radius: 4rpx;
+  border: 1px solid rgba(72, 25, 22, 0.18);
+}
+.composer__images button {
+  position: absolute;
+  top: -8rpx;
+  right: -8rpx;
+  width: 32rpx;
+  height: 32rpx;
+  border-radius: 50%;
+  background: #7f211d;
+  color: #fff;
+  font-size: 22rpx;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.composer__attach {
+  flex: none;
+  padding: 0 12rpx;
+  color: #7f211d;
+  font-size: 22rpx;
+  white-space: nowrap;
 }
 .speech__sources {
   display: flex;

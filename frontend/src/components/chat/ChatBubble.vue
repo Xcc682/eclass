@@ -8,6 +8,9 @@
     <div class="chat-bubble__content">
       <div v-if="role === 'ai' && name" class="chat-bubble__name">{{ name }}</div>
       <div class="chat-bubble__message" :class="{ 'chat-bubble__message--analyzing': isAnalyzing }">
+        <div v-if="images?.length" class="chat-bubble__images">
+          <img v-for="(image, index) in images" :key="index" :src="image" alt="已发送图片" />
+        </div>
         <span class="chat-bubble__text">{{ content }}</span>
         <div v-if="isAnalyzing" class="chat-bubble__typing">
           <div class="chat-bubble__dot"></div>
@@ -33,6 +36,7 @@ withDefaults(defineProps<{
   time?: string
   annotation?: string
   isAnalyzing?: boolean
+  images?: string[]
 }>(), {
   name: 'AI 助手',
   time: ''
@@ -90,6 +94,10 @@ withDefaults(defineProps<{
 
 .chat-bubble__text { font-size: 28rpx; word-break: break-word; white-space: pre-wrap; }
 .chat-bubble--user .chat-bubble__text { color: #FFFFFF; }
+
+/* Attached images sent with the user's message */
+.chat-bubble__images { display: grid; gap: 8rpx; margin-bottom: 12rpx; }
+.chat-bubble__images img { display: block; width: 100%; max-width: 320rpx; border-radius: 8rpx; object-fit: cover; }
 
 /* Analysis state */
 .chat-bubble__message--analyzing {
