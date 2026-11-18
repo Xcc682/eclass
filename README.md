@@ -170,7 +170,7 @@ cd backend && python mcp_server.py   # stdio 方式启动
 
 ```text
 eclass/
-├── frontend/                         # uni-app 前端与 H5 容器配置
+├── frontend/                         # Vue 3 前端（H5 运行时）
 │   ├── src/
 │   │   ├── pages/                     # 按业务模块组织页面
 │   │   ├── components/                # 通用组件
@@ -249,12 +249,11 @@ docker compose --profile container-backend up -d backend
 
 Linux 服务器的启动与更新命令见 [部署说明](DEPLOYMENT.md)。
 
-### 小程序编译
+### 生产构建
 
 ```bash
 cd frontend
-npm run dev:mp-weixin   # 编译到微信开发者工具
-npm run build:h5        # 生产环境 H5 构建
+npm run build:h5        # 构建 H5 生产包到 dist/build/h5
 ```
 
 ---
