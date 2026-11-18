@@ -71,6 +71,12 @@ class EvidenceSearchRequest(BaseModel):
     query: str = Field(min_length=1, max_length=200)
 
 
+def _bump_usage(topic: DebateTopic) -> int:
+    """Increment usage_count, tolerating rows stored before the NOT NULL fix."""
+    topic.usage_count = (topic.usage_count or 0) + 1
+    return topic.usage_count
+
+
 def _json(value: str | None, fallback):
     try:
         parsed = json.loads(value or "")
@@ -231,7 +237,7 @@ async def generate_topics(user: User = Depends(get_ai_user), db: Session = Depen
         topic = DebateTopic(
             title=item["title"], category=item["category"], difficulty=item["difficulty"],
             context=item["context"], pro_hint=item["pro_hint"], con_hint=item["con_hint"],
-            is_ai_generated=True, owner_id=user.id,
+            is_ai_generated=True, owner_id=user.id, usage_count=0,
             status="published" if user.role in {"teacher", "admin"} else "private",
         )
         db.add(topic)
@@ -271,7 +277,7 @@ async def start_debate(data: StartRequest, user: User = Depends(get_ai_user), db
         current_stage="opening", mode=data.mode, current_step=0, total_rounds=0,
         flow_version=FLOW_VERSION, is_legacy=False, active_key=key, report_status="idle",
     )
-    topic.usage_count += 1
+    _bump_usage(topic)
     db.add(record)
     try:
         db.flush()

@@ -14,7 +14,9 @@ from fastapi.testclient import TestClient
 
 from app.database import SessionLocal
 from app.main import app
+from app.models.debate import DebateTopic
 from app.models.user import User
+from app.routers.debates import _bump_usage
 from app.services.ai_service import (
     AIResponseValidationError,
     AIService,
@@ -268,6 +270,15 @@ class ApiAcceptanceTests(unittest.TestCase):
         self.assertEqual(resumed.json()["data"]["status"], "awaiting_feedback")
         called_steps = [call.kwargs["step"] for call in mock_turn.await_args_list]
         self.assertEqual(called_steps, expected_steps)
+
+    def test_10b_debate_start_survives_null_usage_count(self):
+        """Seeded topics predate the NOT NULL constraint; usage_count can be NULL."""
+        topic = DebateTopic(id="null-usage", title="空计数辩题", category="测试")
+        topic.usage_count = None  # simulate a row written before migration 0014
+        self.assertEqual(_bump_usage(topic), 1)
+        self.assertEqual(_bump_usage(topic), 2)
+        topic.usage_count = 7
+        self.assertEqual(_bump_usage(topic), 8)
 
     def test_11_debate_prompt_context_is_bounded_for_long_sessions(self):
         service = AIService()

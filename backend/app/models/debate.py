@@ -20,7 +20,7 @@ class DebateTopic(Base):
     is_ai_generated = Column(Boolean, default=False)
     owner_id = Column(String, ForeignKey("users.id"), nullable=True)
     status = Column(String(20), default="published", nullable=False)
-    usage_count = Column(Integer, default=0)
+    usage_count = Column(Integer, default=0, nullable=False, server_default="0")
     context = Column(Text, default="")
     pro_hint = Column(Text, default="")
     con_hint = Column(Text, default="")

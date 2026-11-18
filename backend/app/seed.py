@@ -158,7 +158,7 @@ def seed_data() -> None:
                 ("15", "历史评价应当以成功结果论英雄还是以过程动机论得失", "党史辨析", "advanced"),
             ]
             for topic in topics:
-                db.add(DebateTopic(id=topic[0], title=topic[1], category=topic[2], difficulty=topic[3]))
+                db.add(DebateTopic(id=topic[0], title=topic[1], category=topic[2], difficulty=topic[3], usage_count=0))
         if not db.scalar(select(KnowledgeDocument.id).limit(1)):
             db.add_all([
                 KnowledgeDocument(id="1", title="中国共产党章程（节选）", category="党章党规", content="中国共产党是中国工人阶级的先锋队，同时是中国人民和中华民族的先锋队，是中国特色社会主义事业的领导核心。", summary="党章总纲核心内容", source="共产党员网"),
